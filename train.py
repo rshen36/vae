@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
-# from vae import VAE
+from vae import VAE
 from load_data import load_data
 
 
@@ -16,18 +16,24 @@ def parse_args():
                         help='dataset on which to train (default: mnist)')
 
     # TODO: input checks
+    # TODO: add ability to pass hyperparameter values as a .json file
+    # ISSUE: any way to add ability to specify encoder/decoder architectures?
     # parser.add_argument('--hparams_file', type=str, default='./hparams.json',
     #                     help='JSON file specifying the hyperparameters for training and record keeping')
     # parser.add_argument('--output_dir', type=str, default='./experiment',
     #                     help='directory to which to output training summary and checkpoint files')
-    parser.add_argument('--seed', type=int, default=123, help='seed for rng')
 
-    # TODO: add ability to pass hyperparameter values as a .json file
-    # parser.add_argument('--num_epochs')
-    # parser.add_argument('--batch_size')
-    # parser.add_argument('--checkpoint_freq')
-    # parser.add_argument('--lr')
-    # parser.add_argument('--z_dim')
+    parser.add_argument('--seed', type=int, default=123, help='seed for rng (default: 123)')
+    parser.add_argument('--num_epochs', type=int, default=500,
+                        help='number of training epochs (default: 500)')
+    parser.add_argument('--batch_size', type=int, default=128,
+                        help='number of samples per batch (default: 128)')
+    parser.add_argument('--checkpoint_freq', type=int, default=100,
+                        help='frequency (in epochs) with which we save model checkpoints (default: 100)')
+
+    # also allow specification of optimizer to use?
+    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate (default: 1e-3)')
+    parser.add_argument('--z_dim', type=int, default=100, help='dimensionality of latent variable')
 
     return parser.parse_args()
 
@@ -55,8 +61,7 @@ if __name__ == "__main__":
 
     # ISSUE: how best to allow for variable specification of the model?
     # TODO: taken from hwalsuklee's tensorflow generative model collection project, change this
-    # models = [VAE]
-    models = []
+    models = [VAE]
 
     # TODO: look into session config options
     with tf.Session() as sess:
