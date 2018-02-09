@@ -62,9 +62,11 @@ class VAE(AbstVAE):
     # what should dimensions of Gaussians be?
     def _build_model(self):
         # placeholders
+        # TODO: fix global step
         # ISSUE: mnist data already comes in flattened, check shape for other datasets/mnist modules
         self.x = tf.placeholder(tf.float32, shape=[None, int(np.prod(self.x_dims))], name="X")
         self.noise = tf.placeholder(tf.float32, shape=[None, self.z_dim], name="noise")
+        # self.global_step = tf.Variable(0, trainable=False, name="global_step")
 
         # set up network
         with tf.variable_scope("encoder"):
@@ -117,7 +119,8 @@ class VAE(AbstVAE):
     def train(self):
         with tf.Session() as sess:
             # TODO: fix global step
-            global_step = tf.Variable(0, trainable=False, name="global_step")
+            # global_step = tf.Variable(0, trainable=False, name="global_step")
+            counter = 0
 
             # initialize tf modules
             # TODO: add ability to load checkpoints
@@ -125,29 +128,31 @@ class VAE(AbstVAE):
             self.summary_writer = tf.summary.FileWriter(self.summary_dir, sess.graph)
 
             sess.run(tf.global_variables_initializer())
-            self.saver.save(sess, self.checkpoint_path, global_step=global_step)
+            self.saver.save(sess, self.checkpoint_path, global_step=counter)
 
             for epoch in range(self.num_epochs):
                 for step in range(self.num_steps):
                     batch = self.mnist.train.next_batch(self.batch_size)
-                    summary, global_step, _ = sess.run(
-                        [self.merged, tf.train.get_global_step(), self.train_op],
+                    summary, _ = sess.run(
+                        [self.merged, self.train_op],
                         feed_dict={
                             self.x: batch[0],
                             self.noise: np.random.randn(self.batch_size, self.z_dim)
                         })
+                    counter += 1
 
-                    self.summary_writer.add_summary(summary, global_step)
+                    self.summary_writer.add_summary(summary, counter)
                     self.summary_writer.flush()
 
                 if epoch % 500 == 0:
-                    self.saver.save(sess, self.checkpoint_path, global_step=global_step)
+                    self.saver.save(sess, self.checkpoint_path, global_step=counter)
 
 
 # for debugging: in actual implementation, this should be separated
 if __name__ == "__main__":
     # TODO: remove necessity of extracting mnist data with every instantiation
+    # ISSUE: numerical underflow (and nan issues) around 130,000 update steps
     vae = VAE(seed=123,
-              num_epochs=10000,
+              num_epochs=1000,
               batch_size=128)
     vae.train()
