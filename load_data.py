@@ -1,9 +1,11 @@
 # Adapted from tensorflow's tensorflow.contrib.learn.python.learn.datasets.mnist file
 import numpy as np
+from collections import namedtuple
 from tensorflow.contrib.keras import datasets
 
 KERAS_DATASETS = ['mnist', 'fashion_mnist']
 # KERAS_DATASETS = ['mnist', 'fashion_mnist', 'cifar10', 'cifar100']  # TODO: color image datasets
+Datasets = namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
 class Dataset:
@@ -97,11 +99,11 @@ class Dataset:
             return self._images[start:end], self.labels[start:end]
 
 
-def load_keras_dataset(dataset='mnist'):
+def load_keras_dataset(dataset='mnist', dtype=np.float32, reshape=True, validation_size=0, seed=123):
     # more clever way of handling this?
     if dataset == 'mnist':
-        # keras provides datasets as tuples of numpy arrays (data type?)
-        (x_train, y_train), (x_test, y_test) = datasets.mnist.load_data()
+        # keras provides datasets as tuples of numpy arrays of data type uint8
+        (train_images, train_labels), (test_images, test_labels) = datasets.mnist.load_data()
     # elif dataset == 'fashion_mnist':
     #     (x_train, y_train), (x_test, y_test) = datasets.fashion_mnist.load_data()  # can't find?
     # elif dataset == 'cifar10':
@@ -111,6 +113,30 @@ def load_keras_dataset(dataset='mnist'):
     else:
         raise ValueError(
             'Unavailable dataset specified. Datasets available: [{}]'.format(', '.join(KERAS_DATASETS)))
+
+    # prevent compatibility issues
+    train_images = np.expand_dims(train_images, axis=-1)
+    train_labels = np.expand_dims(train_labels, axis=-1)
+    test_images = np.expand_dims(test_images, axis=-1)
+    test_labels = np.expand_dims(test_labels, axis=-1)
+
+    if not 0 <= validation_size <= train_images.shape[0]:
+        raise ValueError('Validation size should be between 0 and {}. Received {}.'
+                         .format(train_images.shape[0], validation_size))
+
+    # no point in validation set here?
+    validation_images = train_images[:validation_size]
+    validation_labels = train_labels[:validation_size]
+    train_images = train_images[validation_size:]
+    train_labels = train_labels[validation_size:]
+
+    options = dict(dtype=dtype, reshape=reshape, seed=seed)
+
+    train = Dataset(train_images, train_labels, **options)
+    validation = Dataset(validation_images, validation_labels, **options)
+    test = Dataset(test_images, test_labels, **options)
+
+    return Datasets(train=train, validation=validation, test=test)
 
 
 # TODO: implement ability to load frey face dataset
