@@ -1,20 +1,19 @@
-import os
 import numpy as np
 import tensorflow as tf
-import tensorflow.contrib.distributions as distributions
 import tensorflow.contrib.layers as layers
+# import tensorflow.contrib.distributions as distributions
 
 
 # parent class for all VAE variants
 class AbstVAE:
     # def __init__(self, seed, experiment_dir, num_epochs, batch_size, model_scope):
-    def __init__(self, model_scope):
-        # self.seed = seed
+    def __init__(self, seed, model_scope):
+        self.seed = seed
         # self.experiment_dir = experiment_dir
         # self.num_epochs = num_epochs
         # self.batch_size = batch_size
         self.model_scope = model_scope
-        # np.random.seed(self.seed)  # set random seed elsewhere?
+        np.random.seed(self.seed)  # set random seed elsewhere?
 
     # def encoder(self):
 
@@ -22,15 +21,15 @@ class AbstVAE:
 
     # def build_graph(self):
 
-    def build_model(self):
+    def _build_model(self):
         raise NotImplementedError
 
     # def sample(self, z):
 
 
 class VAE(AbstVAE):
-    def __init__(self, x_dims, z_dim=100, model_name="vae"):
-        super().__init__(model_scope=model_name)
+    def __init__(self, x_dims, z_dim=100, seed=123, model_name="vae"):
+        super().__init__(seed=seed, model_scope=model_name)
         self.x_dims = x_dims
         self.z_dim = z_dim
         with tf.variable_scope(self.model_scope):

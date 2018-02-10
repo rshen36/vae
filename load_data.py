@@ -1,10 +1,18 @@
-# Adapted from tensorflow's tensorflow.contrib.learn.python.learn.datasets.mnist file
+# adapted from tensorflow's tensorflow.contrib.learn.python.learn.datasets.mnist file
+# and from keras dataset loading files
+# very little of this code is originally written, and all credit should go to the original authors
+# the relevant original code has been brought here to help limit dependency and package compatibility issues
+import os
+import sys
+import gzip
+import pickle
 import numpy as np
+from scipy.io import loadmat
 from collections import namedtuple
-from tensorflow.contrib.keras import datasets
 
-KERAS_DATASETS = ['mnist', 'fashion_mnist']
-# KERAS_DATASETS = ['mnist', 'fashion_mnist', 'cifar10', 'cifar100']  # TODO: color image datasets
+from data_utils import get_file
+
+DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist', 'cifar10', 'cifar100']  # TODO: color image datasets
 Datasets = namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
@@ -14,24 +22,23 @@ class Dataset:
                  labels,
                  img_dims,
                  dtype=np.float32,
-                 reshape=True):
-                 # seed=123):
-        # np.random.seed(seed)  # set seed elsewhere?
+                 reshape=True,
+                 seed=123):
+        np.random.seed(seed)  # set seed elsewhere?
         if dtype not in (np.uint8, np.float32):
             # dtype should be either uint8 to leave input as [0, 255] or float32 to rescale into [0.0, 1.0]
             raise TypeError(
                 'Invalid image dtype {}, expected uint8 or float32'.format(dtype))
         assert images.shape[0] == labels.shape[0], (
             'images.shape: {} labels.shape: {}'.format(images.shape, labels.shape))
-        # assert type(seed) is int, (
-        #     'Invalid seed specified: {}'.format(seed))
+        assert type(seed) is int, (
+            'Invalid seed specified: {}'.format(seed))
         self._num_examples = images.shape[0]
 
         # flatten images
         # TODO: adjust for color images
         if reshape:
-            assert len(images.shape) == 3 or images.shape[3] == 1
-            images = images.reshape(images.shape[0], images.shape[1] * images.shape[2])
+            images = images.reshape(images.shape[0], images.shape[1] * images.shape[2], images.shape[3])
         if dtype == np.float32:
             # convert from [0, 255] --> [0.0, 1.0]
             images = images.astype(np.float32)
@@ -103,53 +110,208 @@ class Dataset:
             return self._images[start:end], self.labels[start:end]
 
 
-def load_data(dataset='mnist', dtype=np.float32, reshape=True, validation_size=0, seed=123):
+def load_data(dataset='mnist', dtype=np.float32, reshape=True, seed=123):
     # more clever way of handling this?
     if dataset == 'mnist':
-        # keras provides datasets as tuples of numpy arrays of data type uint8
-        (train_images, train_labels), (test_images, test_labels) = datasets.mnist.load_data()
-    # elif dataset == 'fashion_mnist':
-    #     (x_train, y_train), (x_test, y_test) = datasets.fashion_mnist.load_data()  # can't find?
-    # elif dataset == 'cifar10':
-    #     (x_train, y_train), (x_test, y_test) = datasets.cifar10.load_data()
-    # elif dataset == 'cifar100':
-    #     (x_train, y_train), (x_test, y_test) = datasets.cifar100.load_data()
+        # datasets provided as tuples (imgs, labels) of data type uint8 (imgs in [0, 256])
+        train_images, train_labels = _load_mnist()
+    elif dataset == 'frey_face':
+        # for now, returning an (n_imgs, 1) array of zeros for training labels
+        train_images, train_labels = _load_freyface()  # unlabeled dataset
+    elif dataset == 'fashion_mnist':
+        train_images, train_labels = _load_fashion_mnist()
+    # TODO: color images
+    elif dataset == 'cifar10':
+        train_images, train_labels = _load_cifar10()
+    elif dataset == 'cifar100':
+        train_images, train_labels = _load_cifar_100()
+    # elif dataset == 'celebA':
+    #     train_images, train_labels = _load_celebA()
     else:
         raise ValueError(
-            'Unavailable dataset specified. Datasets available: [{}]'.format(', '.join(KERAS_DATASETS)))
+            'Unavailable dataset specified. Datasets available: [{}]'.format(', '.join(DATASETS_AVAILABLE)))
 
-    # prevent compatibility issues
-    train_images = np.expand_dims(train_images, axis=-1)
-    train_labels = np.expand_dims(train_labels, axis=-1)
-    test_images = np.expand_dims(test_images, axis=-1)
-    test_labels = np.expand_dims(test_labels, axis=-1)
-    img_dims = list(train_images.shape[1:])
-
-    if not 0 <= validation_size <= train_images.shape[0]:
-        raise ValueError('Validation size should be between 0 and {}. Received {}.'
-                         .format(train_images.shape[0], validation_size))
+    # if not 0 <= validation_size <= train_images.shape[0]:
+    #     raise ValueError('Validation size should be between 0 and {}. Received {}.'
+    #                      .format(train_images.shape[0], validation_size))
 
     # no point in validation set here?
-    validation_images = train_images[:validation_size]
-    validation_labels = train_labels[:validation_size]
-    train_images = train_images[validation_size:]
-    train_labels = train_labels[validation_size:]
+    # validation_images = train_images[:validation_size]
+    # validation_labels = train_labels[:validation_size]
+    # train_images = train_images[validation_size:]
+    # train_labels = train_labels[validation_size:]
 
-    # options = dict(img_dims=img_dims, dtype=dtype, reshape=reshape, seed=seed)
-    options = dict(img_dims=img_dims, dtype=dtype, reshape=reshape)
+    img_dims = list(train_images.shape[1:])
+    options = dict(img_dims=img_dims, dtype=dtype, reshape=reshape, seed=seed)
 
     train = Dataset(train_images, train_labels, **options)
-    validation = Dataset(validation_images, validation_labels, **options)
-    test = Dataset(test_images, test_labels, **options)
+    # validation = Dataset(validation_images, validation_labels, **options)
+    # test = Dataset(test_images, test_labels, **options)
 
-    return Datasets(train=train, validation=validation, test=test)
+    return Datasets(train=train, validation=None, test=None)
 
 
-# TODO: implement ability to load frey face dataset
-# TODO: implement ability to load celebA dataset
+def _load_mnist(path='mnist.npz'):
+    path = get_file(path,
+                    origin='https://s3.amazonaws.com/img-datasets/mnist.npz',
+                    file_hash='8a61469f7ea1b51cbae51d4f78837e45')
+    f = np.load(path)
+    x_train, y_train = f['x_train'], f['y_train']
+    x_test, y_test = f['x_test'], f['y_test']
+    f.close()
+
+    # prevent compatibility issues
+    x_train = np.expand_dims(x_train, axis=-1)
+    y_train = np.expand_dims(y_train, axis=-1)
+    x_test = np.expand_dims(x_test, axis=-1)
+    y_test = np.expand_dims(y_test, axis=-1)
+
+    # unsupervised task
+    x_train = np.concatenate((x_train, x_test), axis=0)
+    y_train = np.concatenate((y_train, y_test), axis=0)
+
+    return x_train, y_train
+
+
+def _load_freyface(path='frey_rawface.mat'):
+    img_dims = [20, 28, 1]
+    path = get_file(path,
+                    origin='https://cs.nyu.edu/~roweis/data/frey_rawface.mat')
+    f = loadmat(path)
+    x_train = f['ff']
+
+    # reformat data to match expected format
+    n_imgs = x_train.shape[1]
+    x_train = x_train.transpose()
+    x_train = np.reshape(x_train, [n_imgs] + img_dims)
+
+    # TODO: figure out better way of handling this
+    return x_train, np.zeros(shape=(n_imgs, 1), dtype=np.uint8)
+
+
+def _load_fashion_mnist():
+    dirname = os.path.join('datasets', 'fashion-mnist')
+    base = 'http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/'
+    files = ['train-labels-idx1-ubyte.gz', 'train-images-idx3-ubyte.gz',
+             't10k-labels-idx1-ubyte.gz', 't10k-images-idx3-ubyte.gz']
+
+    paths = []
+    for fname in files:
+        paths.append(get_file(fname,
+                              origin=base + fname,
+                              cache_subdir=dirname))
+
+    with gzip.open(paths[0], 'rb') as lbpath:
+        y_train = np.frombuffer(lbpath.read(), np.uint8, offset=8)
+
+    with gzip.open(paths[1], 'rb') as imgpath:
+        x_train = np.frombuffer(imgpath.read(), np.uint8,
+                                offset=16).reshape(len(y_train), 28, 28)
+
+    with gzip.open(paths[2], 'rb') as lbpath:
+        y_test = np.frombuffer(lbpath.read(), np.uint8, offset=8)
+
+    with gzip.open(paths[3], 'rb') as imgpath:
+        x_test = np.frombuffer(imgpath.read(), np.uint8,
+                               offset=16).reshape(len(y_test), 28, 28)
+
+    # prevent compatibility issues
+    x_train = np.expand_dims(x_train, axis=-1)
+    y_train = np.expand_dims(y_train, axis=-1)
+    x_test = np.expand_dims(x_test, axis=-1)
+    y_test = np.expand_dims(y_test, axis=-1)
+
+    # unsupervised task
+    x_train = np.concatenate((x_train, x_test), axis=0)
+    y_train = np.concatenate((y_train, y_test), axis=0)
+
+    return x_train, y_train
+
+
+def _load_cifar10():
+    dirname = 'cifar-10-batches-py'
+    origin = 'https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
+    path = get_file(dirname, origin=origin, untar=True)
+
+    num_train_samples = 50000
+
+    x_train = np.empty((num_train_samples, 3, 32, 32), dtype='uint8')
+    y_train = np.empty((num_train_samples,), dtype='uint8')
+
+    for i in range(1, 6):
+        fpath = os.path.join(path, 'data_batch_' + str(i))
+        (x_train[(i - 1) * 10000: i * 10000, :, :, :],
+         y_train[(i - 1) * 10000: i * 10000]) = _load_batch(fpath)
+
+    fpath = os.path.join(path, 'test_batch')
+    x_test, y_test = _load_batch(fpath)
+
+    y_train = np.reshape(y_train, (len(y_train), 1))
+    y_test = np.reshape(y_test, (len(y_test), 1))
+
+    # make channels last dimension
+    x_train = x_train.transpose(0, 2, 3, 1)
+    x_test = x_test.transpose(0, 2, 3, 1)
+
+    # unsupervised task
+    x_train = np.concatenate((x_train, x_test), axis=0)
+    y_train = np.concatenate((y_train, y_test), axis=0)
+
+    return x_train, y_train
+
+
+def _load_cifar_100(label_mode='fine'):
+    if label_mode not in ['fine', 'coarse']:
+        raise ValueError('`label_mode` must be one of `"fine"`, `"coarse"`.')
+
+    dirname = 'cifar-100-python'
+    origin = 'https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz'
+    path = get_file(dirname, origin=origin, untar=True)
+
+    fpath = os.path.join(path, 'train')
+    x_train, y_train = _load_batch(fpath, label_key=label_mode + '_labels')
+
+    fpath = os.path.join(path, 'test')
+    x_test, y_test = _load_batch(fpath, label_key=label_mode + '_labels')
+
+    y_train = np.reshape(y_train, (len(y_train), 1))
+    y_test = np.reshape(y_test, (len(y_test), 1))
+
+    # make channels last dimension
+    x_train = x_train.transpose(0, 2, 3, 1)
+    x_test = x_test.transpose(0, 2, 3, 1)
+
+    # unsupervised task
+    x_train = np.concatenate((x_train, x_test), axis=0)
+    y_train = np.concatenate((y_train, y_test), axis=0)
+
+    return x_train, y_train
+
+
+# def _load_celebA():
+#     dirname = 'celebA-python'
+#     origin = 'https://drive.google.com/drive/folders/0B7EVK8r0v71pTUZsaXdaSnZBZzg/Img/img_align_celeba.zip'
+
+
+def _load_batch(fpath, label_key='labels'):
+    with open(fpath, 'rb') as f:
+        if sys.version_info < (3,):
+            d = pickle.load(f)
+        else:
+            d = pickle.load(f, encoding='bytes')
+            # decode utf8
+            d_decoded = {}
+            for k, v in d.items():
+                d_decoded[k.decode('utf8')] = v
+            d = d_decoded
+    data = d['data']
+    labels = d[label_key]
+
+    data = data.reshape(data.shape[0], 3, 32, 32)
+    return data, labels
 
 
 # for debugging
-# if __name__ == "__main__":
-#     dataset = load_data()
-#     print(dataset.train.num_examples)
+if __name__ == "__main__":
+    dataset = load_data(dataset='cifar100')
+    print(dataset.train.num_examples)

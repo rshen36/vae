@@ -12,7 +12,8 @@ def parse_args():
 
     parser.add_argument('--model', type=str, default='vae', choices=['vae'],
                         help='type of variational autoencoder model (default: vae)')
-    parser.add_argument('--dataset', type=str, default='mnist', choices=['mnist'],
+    parser.add_argument('--dataset', type=str, default='mnist',
+                        choices=['mnist', 'frey_face', 'fashion_mnist', 'cifar10', 'cifar100'],
                         help='dataset on which to train (default: mnist)')
 
     # TODO: input checks
@@ -94,3 +95,5 @@ if __name__ == "__main__":
 
             if dataset.train.epochs_completed % args.checkpoint_freq == 0:
                 saver.save(sess, checkpoint_path, global_step=global_step)
+
+            # TODO: add logging to stdout or a specified log directory
