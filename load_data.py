@@ -164,10 +164,10 @@ def _load_mnist(path='mnist.npz'):
     f.close()
 
     # prevent compatibility issues
-    # x_train = np.expand_dims(x_train, axis=-1)
-    # y_train = np.expand_dims(y_train, axis=-1)
-    # x_test = np.expand_dims(x_test, axis=-1)
-    # y_test = np.expand_dims(y_test, axis=-1)
+    x_train = np.expand_dims(x_train, axis=-1)
+    y_train = np.expand_dims(y_train, axis=-1)
+    x_test = np.expand_dims(x_test, axis=-1)
+    y_test = np.expand_dims(y_test, axis=-1)
 
     # unsupervised task
     x_train = np.concatenate((x_train, x_test), axis=0)
@@ -177,7 +177,7 @@ def _load_mnist(path='mnist.npz'):
 
 
 def _load_freyface(path='frey_rawface.mat'):
-    img_dims = [20, 28]
+    img_dims = [28, 20]
     path = get_file(path,
                     origin='https://cs.nyu.edu/~roweis/data/frey_rawface.mat')
     f = loadmat(path)
@@ -186,7 +186,8 @@ def _load_freyface(path='frey_rawface.mat'):
     # reformat data to match expected format
     n_imgs = x_train.shape[1]
     x_train = x_train.transpose()
-    x_train = np.reshape(x_train, [n_imgs] + img_dims)
+    x_train = np.reshape(x_train, tuple([n_imgs] + img_dims), order='C')
+    x_train = np.expand_dims(x_train, axis=-1)
 
     # TODO: figure out better way of handling this
     return x_train, np.zeros(shape=(n_imgs, 1), dtype=np.uint8)
@@ -219,10 +220,10 @@ def _load_fashion_mnist():
                                offset=16).reshape(len(y_test), 28, 28)
 
     # prevent compatibility issues
-    # x_train = np.expand_dims(x_train, axis=-1)
-    # y_train = np.expand_dims(y_train, axis=-1)
-    # x_test = np.expand_dims(x_test, axis=-1)
-    # y_test = np.expand_dims(y_test, axis=-1)
+    x_train = np.expand_dims(x_train, axis=-1)
+    y_train = np.expand_dims(y_train, axis=-1)
+    x_test = np.expand_dims(x_test, axis=-1)
+    y_test = np.expand_dims(y_test, axis=-1)
 
     # unsupervised task
     x_train = np.concatenate((x_train, x_test), axis=0)

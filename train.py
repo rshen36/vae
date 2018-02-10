@@ -49,7 +49,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # does the random seed set above also set the random seed for this class instance?
-    dataset = load_data()
+    dataset = load_data(dataset=args.dataset)
 
     # output directories
     # anything else that should be outputted/recorded? logs? example images?
