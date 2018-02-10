@@ -12,7 +12,8 @@ from collections import namedtuple
 
 from data_utils import get_file
 
-DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist', 'cifar10', 'cifar100']  # TODO: color image datasets
+DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist']
+# DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist', 'cifar10', 'cifar100']  # TODO: color image datasets
 Datasets = namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
@@ -38,7 +39,7 @@ class Dataset:
         # flatten images
         # TODO: adjust for color images
         if reshape:
-            images = images.reshape(images.shape[0], images.shape[1] * images.shape[2], images.shape[3])
+            images = images.reshape(images.shape[0], images.shape[1] * images.shape[2])
         if dtype == np.float32:
             # convert from [0, 255] --> [0.0, 1.0]
             images = images.astype(np.float32)
@@ -121,10 +122,12 @@ def load_data(dataset='mnist', dtype=np.float32, reshape=True, seed=123):
     elif dataset == 'fashion_mnist':
         train_images, train_labels = _load_fashion_mnist()
     # TODO: color images
-    elif dataset == 'cifar10':
-        train_images, train_labels = _load_cifar10()
-    elif dataset == 'cifar100':
-        train_images, train_labels = _load_cifar_100()
+    # loading functions for cifar10 and cifar100 work,
+    #   but need to implement ability to accept color images upstream
+    # elif dataset == 'cifar10':
+    #     train_images, train_labels = _load_cifar10()
+    # elif dataset == 'cifar100':
+    #     train_images, train_labels = _load_cifar_100()
     # elif dataset == 'celebA':
     #     train_images, train_labels = _load_celebA()
     else:
@@ -161,10 +164,10 @@ def _load_mnist(path='mnist.npz'):
     f.close()
 
     # prevent compatibility issues
-    x_train = np.expand_dims(x_train, axis=-1)
-    y_train = np.expand_dims(y_train, axis=-1)
-    x_test = np.expand_dims(x_test, axis=-1)
-    y_test = np.expand_dims(y_test, axis=-1)
+    # x_train = np.expand_dims(x_train, axis=-1)
+    # y_train = np.expand_dims(y_train, axis=-1)
+    # x_test = np.expand_dims(x_test, axis=-1)
+    # y_test = np.expand_dims(y_test, axis=-1)
 
     # unsupervised task
     x_train = np.concatenate((x_train, x_test), axis=0)
@@ -174,7 +177,7 @@ def _load_mnist(path='mnist.npz'):
 
 
 def _load_freyface(path='frey_rawface.mat'):
-    img_dims = [20, 28, 1]
+    img_dims = [20, 28]
     path = get_file(path,
                     origin='https://cs.nyu.edu/~roweis/data/frey_rawface.mat')
     f = loadmat(path)
@@ -216,10 +219,10 @@ def _load_fashion_mnist():
                                offset=16).reshape(len(y_test), 28, 28)
 
     # prevent compatibility issues
-    x_train = np.expand_dims(x_train, axis=-1)
-    y_train = np.expand_dims(y_train, axis=-1)
-    x_test = np.expand_dims(x_test, axis=-1)
-    y_test = np.expand_dims(y_test, axis=-1)
+    # x_train = np.expand_dims(x_train, axis=-1)
+    # y_train = np.expand_dims(y_train, axis=-1)
+    # x_test = np.expand_dims(x_test, axis=-1)
+    # y_test = np.expand_dims(y_test, axis=-1)
 
     # unsupervised task
     x_train = np.concatenate((x_train, x_test), axis=0)

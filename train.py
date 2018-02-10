@@ -13,8 +13,9 @@ def parse_args():
     parser.add_argument('--model', type=str, default='vae', choices=['vae'],
                         help='type of variational autoencoder model (default: vae)')
     parser.add_argument('--dataset', type=str, default='mnist',
-                        choices=['mnist', 'frey_face', 'fashion_mnist', 'cifar10', 'cifar100'],
-                        help='dataset on which to train (default: mnist)')
+                        choices=['mnist', 'frey_face', 'fashion_mnist'],
+                        help='dataset on which to train (default: mnist)\n' +
+                             'options: [mnist, frey_face, fashion_mnist, cifar10, cifar100]')
 
     # TODO: input checks
     # TODO: add ability to pass hyperparameter values as a .json file

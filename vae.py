@@ -30,7 +30,7 @@ class AbstVAE:
 class VAE(AbstVAE):
     def __init__(self, x_dims, z_dim=100, seed=123, model_name="vae"):
         super().__init__(seed=seed, model_scope=model_name)
-        self.x_dims = x_dims
+        self.x_dims = x_dims  # TODO: figure out how to deal with channels/color images
         self.z_dim = z_dim
         with tf.variable_scope(self.model_scope):
             self._build_model()
