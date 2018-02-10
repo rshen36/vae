@@ -20,8 +20,8 @@ def parse_args():
     # ISSUE: any way to add ability to specify encoder/decoder architectures?
     # parser.add_argument('--hparams_file', type=str, default='./hparams.json',
     #                     help='JSON file specifying the hyperparameters for training and record keeping')
-    # parser.add_argument('--output_dir', type=str, default='./experiment',
-    #                     help='directory to which to output training summary and checkpoint files')
+    parser.add_argument('--experiment_dir', type=str, default='./experiment',
+                        help='directory to which to output training summary and checkpoint files')
 
     parser.add_argument('--seed', type=int, default=123, help='seed for rng (default: 123)')
     parser.add_argument('--num_epochs', type=int, default=500,
@@ -44,8 +44,10 @@ def train():
 
 if __name__ == "__main__":
     args = parse_args()
-    dataset = load_data()
     np.random.seed(args.seed)
+
+    # does the random seed set above also set the random seed for this class instance?
+    dataset = load_data()
 
     # output directories
     # anything else that should be outputted/recorded? logs? example images?
@@ -59,32 +61,31 @@ if __name__ == "__main__":
     if not os.path.exists(summary_dir):
         os.makedirs(summary_dir)
 
-    # ISSUE: how best to allow for variable specification of the model?
-    # TODO: taken from hwalsuklee's tensorflow generative model collection project, change this
-    models = [VAE]
-
     # TODO: look into session config options
     with tf.Session() as sess:
-        for model in models:
-            if args.model == model:
-                model = model()
+        # ISSUE: how best to allow for variable specification of the model?
+        # does the random seed set above also set the random seed for this class instance?
+        model = VAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, model_name=args.model)
 
         global_step = 0
         saver = tf.train.Saver()
-        summary_writer = tf.summary.FileWriter(summary_dir, sess.graph)  # TODO: fix this
+        summary_writer = tf.summary.FileWriter(summary_dir, sess.graph)
 
-        num_steps = dataset.train.num_examples // args.batch_size
+        # initial setup
+        sess.run(tf.global_variables_initializer())
+        saver.save(sess, checkpoint_path, global_step=global_step)
+
+        # num_steps = dataset.train.num_examples // args.batch_size
         # for epoch in range(args.num_epochs):
         #     for step in range(num_steps):
         while dataset.train.epochs_completed < args.num_epochs:
             # Dataset class keeps track of steps in current epoch and number epochs elapsed
             batch = dataset.train.next_batch(args.batch_size)
             summary, _ = sess.run(
-                [model.merged, model.train_op],  # TODO: fix this
+                [model.merged, model.train_op],
                 feed_dict={
-                    # TODO: fix this
                     model.x: batch[0],
-                    model.noise: np.random.randn(args.batch_size, args.z_dim)  # TODO: set global random seed
+                    model.noise: np.random.randn(args.batch_size, args.z_dim)
                 })
             global_step += 1
 

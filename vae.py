@@ -8,13 +8,13 @@ import tensorflow.contrib.layers as layers
 # parent class for all VAE variants
 class AbstVAE:
     # def __init__(self, seed, experiment_dir, num_epochs, batch_size, model_scope):
-    def __init__(self, seed, model_scope):
-        self.seed = seed
+    def __init__(self, model_scope):
+        # self.seed = seed
         # self.experiment_dir = experiment_dir
         # self.num_epochs = num_epochs
         # self.batch_size = batch_size
         self.model_scope = model_scope
-        np.random.seed(self.seed)  # set random seed elsewhere?
+        # np.random.seed(self.seed)  # set random seed elsewhere?
 
     # def encoder(self):
 
@@ -29,8 +29,8 @@ class AbstVAE:
 
 
 class VAE(AbstVAE):
-    def __init__(self, seed, x_dims, z_dim=100, model_name="vae"):
-        super().__init__(seed=seed, model_scope=model_name)
+    def __init__(self, x_dims, z_dim=100, model_name="vae"):
+        super().__init__(model_scope=model_name)
         self.x_dims = x_dims
         self.z_dim = z_dim
         with tf.variable_scope(self.model_scope):
@@ -77,7 +77,7 @@ class VAE(AbstVAE):
         # in original paper, lr chosen from {0.01, 0.02, 0.1} depending on first few iters training performance
         # optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
         optimizer = tf.train.AdamOptimizer()
-        self.train_op = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
+        self.train_op = optimizer.minimize(self.loss)
 
         # tensorboard summaries
         x_img = tf.reshape(self.x, [-1] + self.x_dims)

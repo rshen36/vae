@@ -14,17 +14,17 @@ class Dataset:
                  labels,
                  img_dims,
                  dtype=np.float32,
-                 reshape=True,
-                 seed=123):
-        np.random.seed(seed)  # set seed elsewhere?
+                 reshape=True):
+                 # seed=123):
+        # np.random.seed(seed)  # set seed elsewhere?
         if dtype not in (np.uint8, np.float32):
             # dtype should be either uint8 to leave input as [0, 255] or float32 to rescale into [0.0, 1.0]
             raise TypeError(
                 'Invalid image dtype {}, expected uint8 or float32'.format(dtype))
         assert images.shape[0] == labels.shape[0], (
             'images.shape: {} labels.shape: {}'.format(images.shape, labels.shape))
-        assert type(seed) is int, (
-            'Invalid seed specified: {}'.format(seed))
+        # assert type(seed) is int, (
+        #     'Invalid seed specified: {}'.format(seed))
         self._num_examples = images.shape[0]
 
         # flatten images
@@ -52,7 +52,7 @@ class Dataset:
         return self._labels
 
     @property
-    def data_dims(self):
+    def img_dims(self):
         return self._img_dims
 
     @property
@@ -123,7 +123,7 @@ def load_data(dataset='mnist', dtype=np.float32, reshape=True, validation_size=0
     train_labels = np.expand_dims(train_labels, axis=-1)
     test_images = np.expand_dims(test_images, axis=-1)
     test_labels = np.expand_dims(test_labels, axis=-1)
-    img_dims = train_images.shape[1:]
+    img_dims = list(train_images.shape[1:])
 
     if not 0 <= validation_size <= train_images.shape[0]:
         raise ValueError('Validation size should be between 0 and {}. Received {}.'
@@ -135,7 +135,8 @@ def load_data(dataset='mnist', dtype=np.float32, reshape=True, validation_size=0
     train_images = train_images[validation_size:]
     train_labels = train_labels[validation_size:]
 
-    options = dict(img_dims=img_dims, dtype=dtype, reshape=reshape, seed=seed)
+    # options = dict(img_dims=img_dims, dtype=dtype, reshape=reshape, seed=seed)
+    options = dict(img_dims=img_dims, dtype=dtype, reshape=reshape)
 
     train = Dataset(train_images, train_labels, **options)
     validation = Dataset(validation_images, validation_labels, **options)
