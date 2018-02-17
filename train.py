@@ -83,9 +83,9 @@ if __name__ == "__main__":
     logger.info("Logging results to {}".format(results_file))
     logger.info("Arguments saved to {}".format(args_file))
     with open(args_file, 'w') as f:
-        json.dump(args, f)
+        json.dump(vars(args), f)
     with open(results_file, 'w') as f:  # write log file as csv with header
-        f.write("Epoch,Global step,Average loss,ELBO")
+        f.write("Epoch,Global step,Average loss,ELBO\n")
 
     with tf.Session() as sess:
         # ISSUE: how best to allow for variable specification of the model?
@@ -126,4 +126,4 @@ if __name__ == "__main__":
                 logger.info("Epoch: {}   Global step: {}   Average loss: {}   ELBO: {}"
                             .format(dataset.train.epochs_completed, global_step, loss, elbo))
                 with open(results_file, 'a') as f:
-                    f.write("{},{},{},{}".format(dataset.train.epochs_completed, global_step, loss, elbo))
+                    f.write("{},{},{},{}\n".format(dataset.train.epochs_completed, global_step, loss, elbo))

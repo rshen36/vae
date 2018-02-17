@@ -53,12 +53,11 @@ class VAE(AbstVAE):
             params = layers.fully_connected(enet, num_outputs=self.z_dim * 2, activation_fn=None,
                                             weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                             biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
-            mu = tf.nn.sigmoid(params[:, :self.z_dim])
+            # mu = tf.nn.sigmoid(params[:, :self.z_dim])
+            mu = params[:, self.z_dim:]  # not constrained by sigmoid for encoder?
+            sigma = 1e-6 + tf.exp(params[:, :self.z_dim])  # predicting log sigma
 
-            # TODO: taken from altosaar's implementation, change this
-            sigma = 1e-6 + tf.nn.softplus(params[:, self.z_dim:])  # need to ensure std dev positive
-
-        z = mu + sigma * self.noise
+        z = mu + np.multiply(sigma, self.noise)
 
         with tf.variable_scope("decoder"):
             # for now, hardcoding model architecture as that specified in paper
