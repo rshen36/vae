@@ -100,8 +100,9 @@ ENV/
 # mypy
 .mypy_cache/
 
-# data
-MNIST_data/
-
-# experiments
+# experiments and results
 experiment/
+results/
+
+# pycharm
+.idea/

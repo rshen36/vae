@@ -102,10 +102,12 @@ if __name__ == "__main__":
         saver.save(sess, checkpoint_path, global_step=global_step)
 
         # Dataset class keeps track of steps in current epoch and number epochs elapsed
-        while dataset.train.epochs_completed < args.num_epochs:
+        # while dataset.train.epochs_completed < args.num_epochs:
+        while dataset.test.epochs_completed < args.num_epochs:
             cur_epoch_completed = False  # ew
             while not cur_epoch_completed:
-                batch = dataset.train.next_batch(args.batch_size)
+                # batch = dataset.train.next_batch(args.batch_size)
+                batch = dataset.test.next_batch(args.batch_size)
                 summary, loss, elbo, _ = sess.run(
                     [model.merged, model.loss, model.elbo, model.train_op],
                     feed_dict={
@@ -113,17 +115,20 @@ if __name__ == "__main__":
                         model.noise: np.random.randn(args.batch_size, args.z_dim)
                     })
                 global_step += 1
-                cur_epoch_completed = dataset.train.cur_epoch_completed
+                # cur_epoch_completed = dataset.train.cur_epoch_completed
+                cur_epoch_completed = dataset.test.cur_epoch_completed
 
                 summary_writer.add_summary(summary, global_step)
                 summary_writer.flush()
 
-            if dataset.train.epochs_completed % args.checkpoint_freq == 0:
+            # if dataset.train.epochs_completed % args.checkpoint_freq == 0:
+            if dataset.test.epochs_completed % args.checkpoint_freq == 0:
                 saver.save(sess, checkpoint_path, global_step=global_step)
 
-            if dataset.train.epochs_completed % args.print_freq == 0:
+            # if dataset.train.epochs_completed % args.print_freq == 0:
+            if dataset.test.epochs_completed % args.print_freq == 0:
                 # better way of logging to stdout and a log file?
                 logger.info("Epoch: {}   Global step: {}   Average loss: {}   ELBO: {}"
-                            .format(dataset.train.epochs_completed, global_step, loss, elbo))
+                            .format(dataset.test.epochs_completed, global_step, loss, elbo))
                 with open(results_file, 'a') as f:
-                    f.write("{},{},{},{}\n".format(dataset.train.epochs_completed, global_step, loss, elbo))
+                    f.write("{},{},{},{}\n".format(dataset.test.epochs_completed, global_step, loss, elbo))
