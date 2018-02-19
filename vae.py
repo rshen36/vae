@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
-# import tensorflow.contrib.distributions as distributions
+from tensorflow.contrib.distributions import Normal
 
 
 # parent class for all VAE variants
@@ -53,9 +53,8 @@ class VAE(AbstVAE):
             params = layers.fully_connected(enet, num_outputs=self.z_dim * 2, activation_fn=None,
                                             weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                             biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
-            # mu = tf.nn.sigmoid(params[:, :self.z_dim])
-            mu = params[:, self.z_dim:]  # not constrained by sigmoid for encoder?
-            sigma = 1e-6 + tf.exp(params[:, :self.z_dim])  # predicting log sigma
+            mu = params[:, self.z_dim:]
+            sigma = 1e-6 + tf.exp(params[:, :self.z_dim])  # 1e-6 still necessary?
 
         z = mu + np.multiply(sigma, self.noise)
 
@@ -67,15 +66,24 @@ class VAE(AbstVAE):
                                           weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                           biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
             # any point in making x_hat accessible? ability to sample images once model trained?
-            self.x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)),
-                                                activation_fn=tf.nn.sigmoid,
+            # self.x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)),
+            #                                     activation_fn=tf.nn.sigmoid,
+            #                                     weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+            #                                     biases_initializer=tf.truncated_normal_initializer(stddev=0.01)
+            #                                     )  # Bernoulli MLP decoder
+            out_params = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)*2), activation_fn=None,
                                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                                biases_initializer=tf.truncated_normal_initializer(stddev=0.01)
-                                                )  # Bernoulli MLP decoder
+                                                biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
+            out_mu = tf.nn.sigmoid(out_params[:, int(np.prod(self.x_dims)):])  # out_mu constrained to (0,1)
+            out_sigma = 1e-6 + tf.exp(out_params[:, :int(np.prod(self.x_dims))])
+            out_dist = Normal(loc=out_mu, scale=out_sigma)  # ???
 
-        nll_loss = -tf.reduce_sum(self.x * tf.log(1e-8 + self.x_hat) +
-                                  (1 - self.x) * tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli nll
-        kl_loss = 0.5 * tf.reduce_sum(tf.square(mu) + tf.square(sigma) - tf.log(tf.square(sigma)) - 1, 1)
+        # nll_loss = -tf.reduce_sum(self.x * tf.log(1e-8 + self.x_hat) +
+        #                           (1 - self.x) * tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli nll
+        nll_loss = -tf.reduce_sum(out_dist.log_prob(self.x), 1)
+        # kl_loss = 0.5 * tf.reduce_sum(tf.square(mu) + tf.square(sigma) - tf.log(tf.square(sigma)) - 1, 1)
+        kl_loss = 0.5 * tf.reduce_sum(1 + tf.log(tf.square(sigma)) - tf.square(mu) - tf.square(sigma), 1)
+        # TODO: add regularization term over parameters corresponding to N(0,I)
         self.loss = tf.reduce_mean(nll_loss + kl_loss)
         self.elbo = -1.0 * tf.reduce_mean(nll_loss + kl_loss)
 
@@ -84,10 +92,10 @@ class VAE(AbstVAE):
         self.train_op = optimizer.minimize(self.loss)
 
         # tensorboard summaries
-        x_img = tf.reshape(self.x, [-1] + self.x_dims)
-        xhat_img = tf.reshape(self.x_hat, [-1] + self.x_dims)
-        tf.summary.image('data', x_img)
-        tf.summary.image('reconstruction', xhat_img)
+        # x_img = tf.reshape(self.x, [-1] + self.x_dims)
+        # xhat_img = tf.reshape(self.x_hat, [-1] + self.x_dims)
+        # tf.summary.image('data', x_img)
+        # tf.summary.image('reconstruction', xhat_img)
         tf.summary.scalar('reconstruction_loss', tf.reduce_mean(nll_loss))
         tf.summary.scalar('kl_loss', tf.reduce_mean(kl_loss))
         tf.summary.scalar('loss', self.loss)
