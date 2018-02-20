@@ -20,7 +20,7 @@ def parse_args():
     parser.add_argument('--dataset', type=str, default='mnist',
                         choices=['mnist', 'frey_face', 'fashion_mnist'],
                         help='dataset on which to train (default: mnist)\n' +
-                             'options: [mnist, frey_face, fashion_mnist, cifar10, cifar100]')
+                             'options: [mnist, frey_face, fashion_mnist]')
 
     # TODO: input checks
     # TODO: add ability to pass hyperparameter values as a .json file
@@ -37,12 +37,12 @@ def parse_args():
                         help='number of samples per batch (default: 100)')
     parser.add_argument('--checkpoint_freq', type=int, default=100,
                         help='frequency (in epochs) with which we save model checkpoints (default: 100)')
-    parser.add_argument('--print_freq', type=int, default=100,
-                        help='frequency (in global steps) to log current results (default: 100)')
+    parser.add_argument('--print_freq', type=int, default=1,
+                        help='frequency (in global steps) to log current results (default: 1)')
 
     # also allow specification of optimizer to use?
-    parser.add_argument('--lr', type=float, default=.01, help='learning rate (default: .01)')
-    parser.add_argument('--z_dim', type=int, default=100, help='dimensionality of latent variable')
+    parser.add_argument('--lr', type=float, default=.02, help='learning rate (default: .02)')
+    parser.add_argument('--z_dim', type=int, default=20, help='dimensionality of latent variable (default: 20)')
 
     # ISSUE: assumes MLP architecture
     parser.add_argument('--hidden_dim', type=int, default=500,
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # does the random seed set above also set the random seed for this class instance?
-    dataset = load_data(dataset=args.dataset, dtype=np.uint8)
+    dataset = load_data(dataset=args.dataset)
     logger.info("Successfully loaded dataset {}".format(args.dataset))
 
     # output directories
@@ -75,8 +75,8 @@ if __name__ == "__main__":
         os.makedirs(checkpoint_dir)
     if not os.path.exists(summary_dir):
         os.makedirs(summary_dir)
-    if os.path.exists(results_file):
-        raise AssertionError("log file already exists. Change log file specification to prevent overwrite.")
+    # if os.path.exists(results_file):
+    #     raise AssertionError("log file already exists. Change log file specification to prevent overwrite.")
     logger.info("Checkpoints saved at {}".format(checkpoint_dir))
     logger.info("Summaries saved at {}".format(summary_dir))
     logger.info("Logging results to {}".format(results_file))

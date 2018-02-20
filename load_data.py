@@ -10,6 +10,7 @@ import numpy as np
 from scipy.io import loadmat
 from collections import namedtuple
 
+# from torchvision.datasets import MNIST, Fashion-MNIST, Omniglot
 from data_utils import get_file
 
 DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist']
@@ -126,6 +127,8 @@ def load_data(dataset='mnist', dtype=np.float32, reshape=True, seed=123):
     elif dataset == 'frey_face':
         # for now, returning an (n_imgs, 1) array of zeros for training labels
         (train_images, train_labels), (test_images, test_labels) = _load_freyface()  # unlabeled dataset
+    # elif dataset == 'omniglot':
+    #     (train_images, train_labels), (test_images, test_labels) = _load_omniglot()
     elif dataset == 'fashion_mnist':
         (train_images, train_labels), (test_images, test_labels) = _load_fashion_mnist()
     # TODO: color images
@@ -203,6 +206,20 @@ def _load_freyface(path='frey_rawface.mat'):
     # TODO: figure out better way of handling this
     return (x_train, np.zeros(shape=(train_size, 1), dtype=np.uint8)), \
            (x_test, np.zeros(shape=(x_test.shape[0], 1), dtype=np.uint8))
+
+
+# def _load_omniglot():
+#     base = 'https://github.com/brendenlake/omniglot/raw/master/python/'
+#     files = ['images_background.zip', 'images_evaluation.zip']
+#
+#     paths = []
+#     for fname in files:
+#         paths.append(get_file(fname,
+#                               origin=base + fname,
+#                               extract=True,
+#                               archive_format='zip'))
+#     for path in paths:
+#         f = np.load(path)
 
 
 def _load_fashion_mnist():
