@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
-from vae import VAE
+from vae import VAE, IWAE
 from load_data import load_data
 
 logging.basicConfig(level=logging.INFO)
@@ -56,6 +56,8 @@ def train_tf():
 
 
 if __name__ == "__main__":
+    importance_weights = True
+
     args = parse_args()
     np.random.seed(args.seed)
 
@@ -86,11 +88,21 @@ if __name__ == "__main__":
     with open(results_file, 'w') as f:  # write log file as csv with header
         f.write("Epoch,Global step,Average loss,ELBO\n")
 
+    if importance_weights:
+        k = 1
+        args.batch_size = 20
+        lr = 0.001
+        i = 0
+
     with tf.Session() as sess:
         # ISSUE: how best to allow for variable specification of the model?
         # does the random seed set above also set the random seed for this class instance?
-        model = VAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
-                    lr=args.lr, model_name=args.model)
+        if importance_weights:
+            # TESTING, change this later
+            model = IWAE(x_dims=dataset.train.img_dims, batch_size=args.batch_size, n_samples=k)
+        else:
+            model = VAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
+                        lr=args.lr, model_name=args.model)
 
         global_step = 0
         saver = tf.train.Saver()
@@ -107,18 +119,34 @@ if __name__ == "__main__":
             while not cur_epoch_completed:
                 batch = dataset.train.next_batch(args.batch_size)
                 # batch = dataset.test.next_batch(args.batch_size)
-                summary, loss, elbo, _ = sess.run(
-                    [model.merged, model.loss, model.elbo, model.train_op],
-                    feed_dict={
-                        model.x: batch[0],
-                        model.noise: np.random.randn(args.batch_size, args.z_dim)
-                    })
+                if importance_weights:
+                    batch_images = np.repeat(batch[0], repeats=k, axis=0)
+                    summary, loss, elbo, _ = sess.run(
+                        [model.merged, model.loss, model.elbo, model.train_op],
+                        feed_dict={
+                            model.x: batch_images,
+                            model.lr: lr
+                        })
+                else:
+                    batch_images = batch[0]
+                    summary, loss, elbo, _ = sess.run(
+                        [model.merged, model.loss, model.elbo, model.train_op],
+                        feed_dict={
+                            model.x: batch_images,
+                            model.noise: np.random.randn(args.batch_size, args.z_dim)
+                        })
                 global_step += 1
                 cur_epoch_completed = dataset.train.cur_epoch_completed
                 # cur_epoch_completed = dataset.test.cur_epoch_completed
 
                 summary_writer.add_summary(summary, global_step)
                 summary_writer.flush()
+
+            # update lr according to schema specified in paper
+            if importance_weights:
+                if dataset.train.epochs_completed > 3 ** i:
+                    i += 1
+                    lr = 0.001 * (10 ** (-i / 7))
 
             if dataset.train.epochs_completed % args.checkpoint_freq == 0:
             # if dataset.test.epochs_completed % args.checkpoint_freq == 0:
