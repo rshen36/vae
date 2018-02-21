@@ -69,32 +69,31 @@ class VAE(AbstVAE):
             dnet = layers.fully_connected(z, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                           biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
-            # any point in making x_hat accessible? ability to sample images once model trained?
-            self.x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)),
-                                                activation_fn=tf.nn.sigmoid,
-                                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                                biases_initializer=tf.truncated_normal_initializer(stddev=0.01)
-                                                )  # Bernoulli MLP decoder
-            # out_params = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)),
+
+            # MNIST
+            # self.x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)),
             #                                     activation_fn=tf.nn.sigmoid,
             #                                     weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-            #                                     biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
-            # out_params = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)*2), activation_fn=None,
-            #                                     weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-            #                                     biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
-            # out_mu = tf.nn.sigmoid(out_params[:, int(np.prod(self.x_dims)):])  # out_mu constrained to (0,1)
-            # out_sigma = 1e-6 + tf.exp(out_params[:, :int(np.prod(self.x_dims))])
-            # self.out_dbn = dbns.Normal(loc=out_mu, scale=out_sigma)  # ???
-            # self.out_dbn = dbns.Bernoulli(logits=out_params)
+            #                                     biases_initializer=tf.truncated_normal_initializer(stddev=0.01)
+            #                                     )  # Bernoulli MLP decoder
 
+            # Frey face
+            out_params = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)*2), activation_fn=None,
+                                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                                biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
+            out_mu = tf.nn.sigmoid(out_params[:, int(np.prod(self.x_dims)):])  # out_mu constrained to (0,1)
+            out_sigma = 1e-6 + tf.exp(out_params[:, :int(np.prod(self.x_dims))])
+            self.out_dbn = dbns.Normal(loc=out_mu, scale=out_sigma)
+
+        # MNIST
         # nll_loss = -tf.reduce_sum(self.x * tf.log(1e-8 + self.x_hat) +
         #                           (1 - self.x) * tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli nll
         # kl_loss = 0.5 * tf.reduce_sum(tf.square(mu) + tf.square(sigma) - tf.log(tf.square(sigma)) - 1, 1)
-        #  TODO: add regularization term over parameters corresponding to N(0,I)
 
-        # nll_loss = -tf.reduce_sum(self.out_dbn.log_prob(self.x), 1)
-        nll_loss = tf.reduce_sum(tf.square(self.x - self.x_hat), 1)
+        # Frey face
+        nll_loss = -tf.reduce_sum(self.out_dbn.log_prob(self.x), 1)
         kl_loss = tf.reduce_sum(dbns.kl_divergence(self.q_z, self.z_prior), 1)
+
         self.loss = tf.reduce_mean(nll_loss + kl_loss)
         self.elbo = -1.0 * tf.reduce_mean(nll_loss + kl_loss)
 
