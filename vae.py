@@ -102,6 +102,11 @@ class VAE(AbstVAE):
         # self.elbo = tf.reduce_mean(ll + neg_kld)
         # self.loss = -self.elbo
 
+        # self.elbo = tf.reduce_mean(tf.reduce_sum(self.out_dbn.log_prob(self.x), 1)
+        #                            + tf.reduce_sum(self.z_prior.log_prob(z), 1)
+        #                            - tf.reduce_sum(self.q_z.log_prob(z), 1))
+        # self.loss = -self.elbo
+
         # in original paper, lr chosen from {0.01, 0.02, 0.1} depending on first few iters training performance
         optimizer = tf.train.AdagradOptimizer(learning_rate=self.lr)
         self.train_op = optimizer.minimize(self.loss)
@@ -113,8 +118,8 @@ class VAE(AbstVAE):
         # tf.summary.image('reconstruction', xhat_img)  # MNIST
         sample_img = tf.reshape(self.out_dbn.sample(), [-1] + self.x_dims)  # Frey face
         tf.summary.image('samples', sample_img)  # Frey face
-        tf.summary.scalar('reconstruction_loss', tf.reduce_mean(nll_loss))
-        tf.summary.scalar('kl_loss', tf.reduce_mean(kl_loss))
+        # tf.summary.scalar('reconstruction_loss', tf.reduce_mean(nll_loss))
+        # tf.summary.scalar('kl_loss', tf.reduce_mean(kl_loss))
         tf.summary.scalar('loss', self.loss)
         tf.summary.scalar('elbo', self.elbo)
         self.merged = tf.summary.merge_all()

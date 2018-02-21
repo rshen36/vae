@@ -37,7 +37,7 @@ def parse_args():
                         help='number of samples per batch (default: 100)')
     parser.add_argument('--checkpoint_freq', type=int, default=100,
                         help='frequency (in epochs) with which we save model checkpoints (default: 100)')
-    parser.add_argument('--print_freq', type=int, default=1,
+    parser.add_argument('--print_freq', type=int, default=25,
                         help='frequency (in global steps) to log current results (default: 1)')
 
     # also allow specification of optimizer to use?
@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument('--z_dim', type=int, default=20, help='dimensionality of latent variable (default: 20)')
 
     # ISSUE: assumes MLP architecture
-    parser.add_argument('--hidden_dim', type=int, default=500,
+    parser.add_argument('--hidden_dim', type=int, default=200,
                         help='dimensionality of the hidden layers in the architecture')
 
     return parser.parse_args()
@@ -56,7 +56,7 @@ def train_tf():
 
 
 if __name__ == "__main__":
-    importance_weights = True
+    importance_weights = False
 
     args = parse_args()
     np.random.seed(args.seed)
