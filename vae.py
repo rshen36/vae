@@ -191,10 +191,10 @@ class BernoulliIWAE(AbstVAE):
     def _build_model(self):
         # input points
         self.x = tf.placeholder(tf.float32, shape=[self.batch_size, int(np.prod(self.x_dims))], name="X")
-        self.noise = tf.placeholder(tf.float32, shape=[self.batch_size * self.n_samples, self.z_dim], name="noise")
+        # self.noise = tf.placeholder(tf.float32, shape=[self.batch_size * self.n_samples, self.z_dim], name="noise")
         self.lr = tf.placeholder(tf.float32, shape=(), name="lr")  # shape?
-        # self.z_prior = dbns.Normal(loc=tf.zeros(shape=[(self.batch_size * self.n_samples), self.z_dim]),
-        #                            scale=tf.ones(shape=[(self.batch_size * self.n_samples), self.z_dim]))
+        self.p_z = dbns.Normal(loc=tf.zeros(shape=[self.batch_size, self.z_dim]),
+                               scale=tf.ones(shape=[self.batch_size, self.z_dim]))  # ???
 
         # set up network
         with tf.variable_scope("encoder"):
@@ -211,10 +211,14 @@ class BernoulliIWAE(AbstVAE):
                                               biases_initializer=layers.xavier_initializer())
             z_mu = z_params[:, self.z_dim:]
             z_sigma = 1e-6 + tf.exp(z_params[:, :self.z_dim])  # 1e-6 still necessary?
-            # self.q_z = dbns.Normal(loc=z_mu, scale=z_sigma)  # did they predict var or stddev?
+            self.q_z = dbns.Normal(loc=z_mu, scale=z_sigma)  # did they predict var or stddev?
 
-        z = z_mu + tf.multiply(tf.sqrt(z_sigma), self.noise)
-        # z = self.q_z.sample()
+        # z = z_mu + tf.multiply(z_sigma, self.noise)
+        z_sample = self.p_z.sample(self.n_samples)
+        z = tf.tile(z_mu, multiples=[self.n_samples, 1]) + tf.multiply(
+            tf.tile(z_sigma, multiples=[self.n_samples, 1]),
+            tf.reshape(z_sample, [self.batch_size * self.n_samples, self.z_dim]))
+        # z = self.q_z.sample()  # ???
 
         with tf.variable_scope("decoder"):
             # Initialization via heuristic specified by Glorot & Bengio 2010
@@ -236,19 +240,23 @@ class BernoulliIWAE(AbstVAE):
             #                                     biases_initializer=layers.xavier_initializer())
             # self.out_dbn = dbns.Bernoulli(logits=out_params)
 
-        # ???
-        # mc_samples = self.out_dbn.sample(sample_shape=[(self.n_samples * self.batch_size), int(np.prod(self.x_dims))])
-        # importance_weights = tf.exp(tf.log(1e-6 + tf.reduce_sum(self.out_dbn.log_prob(mc_samples), 1) +
-        #                                    tf.reduce_sum(self.z_prior.log_prob(z), 1)) -
-        #                             tf.log(1e-6 + tf.reduce_sum(self.q_z.log_prob(z), 1)))
-        nll_loss = -tf.reduce_sum(self.x * tf.log(1e-8 + self.x_hat) +
-                                  (1 - self.x) * tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli nll
-        kl_loss = 0.5 * tf.reduce_sum(tf.square(z_mu) + tf.square(z_sigma) - tf.log(tf.square(z_sigma)) - 1, 1)
-        self.loss = tf.reduce_mean(nll_loss + kl_loss)
-        self.elbo = -1.0 * tf.reduce_mean(nll_loss + kl_loss)
+        nll = -tf.reduce_sum(tf.tile(self.x, multiples=[self.n_samples, 1]) * tf.log(1e-8 + self.x_hat) +
+                             (1 - tf.tile(self.x, multiples=[self.n_samples, 1])) *
+                             tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli nll
+        # kld = 0.5 * tf.reduce_sum(tf.square(z_mu) + tf.square(z_sigma) - tf.log(tf.square(z_sigma)) - 1, 1)
+        # kld = tf.reduce_sum(dbns.kl_divergence(self.q_z, self.p_z), 1)  # ???
+        kld = tf.reduce_sum(tf.reshape(self.p_z.log_prob(z_sample) - self.q_z.log_prob(z_sample),
+                                       [self.batch_size * self.n_samples, self.z_dim]), 1)
+        log_iws = tf.reshape(nll, [self.batch_size, self.n_samples]) \
+            + tf.reshape(kld, [self.batch_size, self.n_samples])
+        max_log_iws = tf.reduce_max(log_iws, axis=1, keepdims=True)  # ???
 
-        # self.elbo = tf.reduce_mean(tf.log(1e-6 + (1 / self.n_samples) * tf.reduce_sum(importance_weights)))
-        # self.loss = -self.elbo
+        # subtract max for numerical stability
+        importance_weights = tf.log(tf.reduce_mean(tf.exp(log_iws - max_log_iws), axis=1))  # ???
+
+        # normalization constant?
+        self.loss = tf.reduce_mean(max_log_iws) + tf.reduce_mean(importance_weights)
+        self.elbo = -self.loss
 
         # for now, hardcoding the Adam optimizer parameters used in the paper
         optimizer = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.9, beta2=0.999, epsilon=0.0001)
@@ -259,6 +267,8 @@ class BernoulliIWAE(AbstVAE):
         # tf.summary.image('data', x_img)
         # sample_img = tf.reshape(self.out_dbn.sample(), [-1] + self.x_dims)
         # tf.summary.image('samples', sample_img)
+        tf.summary.scalar('nll', tf.reduce_mean(nll))
+        tf.summary.scalar('kl_div', tf.reduce_mean(kld))
         tf.summary.scalar('loss', self.loss)
         tf.summary.scalar('elbo', self.elbo)
         self.merged = tf.summary.merge_all()

@@ -15,7 +15,8 @@ logger = logging.getLogger('train')
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model', type=str, default='gaussian_vae', choices=['bernoulli_vae', 'gaussian_vae'],
+    parser.add_argument('--model', type=str, default='bernoulli_vae',
+                        choices=['bernoulli_vae', 'gaussian_vae', 'bernoulli_iwae'],
                         help='type of variational autoencoder model (default: bernoulli_vae)')
     parser.add_argument('--dataset', type=str, default='mnist',
                         choices=['mnist', 'frey_face', 'fashion_mnist'],
@@ -86,7 +87,7 @@ if __name__ == "__main__":
         f.write("Epoch,Global step,Average loss,ELBO\n")
 
     if importance_weights:
-        k = 1
+        k = 5
         args.batch_size = 20
         lr = 0.001
         i = 0
@@ -113,11 +114,6 @@ if __name__ == "__main__":
         sess.run(tf.global_variables_initializer())
         saver.save(sess, checkpoint_path, global_step=global_step)
 
-        # adj = np.repeat(450.0, repeats=1000, axis=0)
-        # adj = np.concatenate((adj, np.linspace(start=450.0, stop=350.0, num=9000)), axis=0)
-        # adj = np.concatenate((adj, np.linspace(start=350.0, stop=150.0, num=90000)), axis=0)
-        # adj = np.concatenate((adj, np.linspace(start=150.0, stop=0.0, num=900000)), axis=0)
-
         # Dataset class keeps track of steps in current epoch and number epochs elapsed
         while dataset.train.epochs_completed < args.num_epochs:
         # while dataset.test.epochs_completed < args.num_epochs:
@@ -130,7 +126,6 @@ if __name__ == "__main__":
                         [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
                             model.x: batch[0],
-                            model.noise: np.random.randn(args.batch_size * k, args.z_dim),
                             model.lr: lr
                         })
                 else:
