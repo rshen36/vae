@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
-from vae import VAE, IWAE
+from vae import BernoulliVAE, GaussianVAE, BernoulliIWAE
 from load_data import load_data
 
 logging.basicConfig(level=logging.INFO)
@@ -15,18 +15,15 @@ logger = logging.getLogger('train')
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model', type=str, default='vae', choices=['vae'],
-                        help='type of variational autoencoder model (default: vae)')
+    parser.add_argument('--model', type=str, default='gaussian_vae', choices=['bernoulli_vae', 'gaussian_vae'],
+                        help='type of variational autoencoder model (default: bernoulli_vae)')
     parser.add_argument('--dataset', type=str, default='mnist',
                         choices=['mnist', 'frey_face', 'fashion_mnist'],
                         help='dataset on which to train (default: mnist)\n' +
                              'options: [mnist, frey_face, fashion_mnist]')
 
     # TODO: input checks
-    # TODO: add ability to pass hyperparameter values as a .json file
     # ISSUE: any way to add ability to specify encoder/decoder architectures?
-    # parser.add_argument('--hparams_file', type=str, default='./hparams.json',
-    #                     help='JSON file specifying the hyperparameters for training and record keeping')
     parser.add_argument('--experiment_dir', type=str, default='./experiment',
                         help='directory to which to output training summary and checkpoint files')
 
@@ -37,16 +34,16 @@ def parse_args():
                         help='number of samples per batch (default: 100)')
     parser.add_argument('--checkpoint_freq', type=int, default=100,
                         help='frequency (in epochs) with which we save model checkpoints (default: 100)')
-    parser.add_argument('--print_freq', type=int, default=25,
+    parser.add_argument('--print_freq', type=int, default=1,
                         help='frequency (in global steps) to log current results (default: 1)')
 
     # also allow specification of optimizer to use?
     parser.add_argument('--lr', type=float, default=.02, help='learning rate (default: .02)')
-    parser.add_argument('--z_dim', type=int, default=20, help='dimensionality of latent variable (default: 20)')
+    parser.add_argument('--z_dim', type=int, default=50, help='dimensionality of latent variable (default: 20)')
 
     # ISSUE: assumes MLP architecture
     parser.add_argument('--hidden_dim', type=int, default=200,
-                        help='dimensionality of the hidden layers in the architecture')
+                        help='dimensionality of the hidden layers in the architecture (default: 200)')
 
     return parser.parse_args()
 
@@ -56,7 +53,7 @@ def train_tf():
 
 
 if __name__ == "__main__":
-    importance_weights = False
+    importance_weights = True
 
     args = parse_args()
     np.random.seed(args.seed)
@@ -99,10 +96,14 @@ if __name__ == "__main__":
         # does the random seed set above also set the random seed for this class instance?
         if importance_weights:
             # TESTING, change this later
-            model = IWAE(x_dims=dataset.train.img_dims, batch_size=args.batch_size, n_samples=k)
+            model = BernoulliIWAE(x_dims=dataset.train.img_dims, batch_size=args.batch_size, n_samples=k)
         else:
-            model = VAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
-                        lr=args.lr, model_name=args.model)
+            if args.model == "bernoulli_vae":
+                model = BernoulliVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
+                                     lr=args.lr, model_name=args.model)
+            else:
+                model = GaussianVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
+                                    lr=args.lr, model_name=args.model)
 
         global_step = 0
         saver = tf.train.Saver()
@@ -112,6 +113,11 @@ if __name__ == "__main__":
         sess.run(tf.global_variables_initializer())
         saver.save(sess, checkpoint_path, global_step=global_step)
 
+        # adj = np.repeat(450.0, repeats=1000, axis=0)
+        # adj = np.concatenate((adj, np.linspace(start=450.0, stop=350.0, num=9000)), axis=0)
+        # adj = np.concatenate((adj, np.linspace(start=350.0, stop=150.0, num=90000)), axis=0)
+        # adj = np.concatenate((adj, np.linspace(start=150.0, stop=0.0, num=900000)), axis=0)
+
         # Dataset class keeps track of steps in current epoch and number epochs elapsed
         while dataset.train.epochs_completed < args.num_epochs:
         # while dataset.test.epochs_completed < args.num_epochs:
@@ -120,19 +126,18 @@ if __name__ == "__main__":
                 batch = dataset.train.next_batch(args.batch_size)
                 # batch = dataset.test.next_batch(args.batch_size)
                 if importance_weights:
-                    batch_images = np.repeat(batch[0], repeats=k, axis=0)
                     summary, loss, elbo, _ = sess.run(
                         [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
-                            model.x: batch_images,
+                            model.x: batch[0],
+                            model.noise: np.random.randn(args.batch_size * k, args.z_dim),
                             model.lr: lr
                         })
                 else:
-                    batch_images = batch[0]
                     summary, loss, elbo, _ = sess.run(
                         [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
-                            model.x: batch_images,
+                            model.x: batch[0],
                             model.noise: np.random.randn(args.batch_size, args.z_dim)
                         })
                 global_step += 1
