@@ -240,25 +240,24 @@ class BernoulliIWAE(AbstVAE):
             #                                     biases_initializer=layers.xavier_initializer())
             # self.out_dbn = dbns.Bernoulli(logits=out_params)
 
-        nll = -tf.reduce_sum(tf.tile(self.x, multiples=[self.n_samples, 1]) * tf.log(1e-8 + self.x_hat) +
-                             (1 - tf.tile(self.x, multiples=[self.n_samples, 1])) *
-                             tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli nll
+        log_lik = tf.reduce_sum(tf.tile(self.x, multiples=[self.n_samples, 1]) * tf.log(1e-8 + self.x_hat) +
+                                (1 - tf.tile(self.x, multiples=[self.n_samples, 1])) *
+                                tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli log-likelihood
         # kld = 0.5 * tf.reduce_sum(tf.square(z_mu) + tf.square(z_sigma) - tf.log(tf.square(z_sigma)) - 1, 1)
         # kld = tf.reduce_sum(dbns.kl_divergence(self.q_z, self.p_z), 1)  # ???
-        kld = tf.reduce_sum(tf.reshape(self.p_z.log_prob(z_sample) - self.q_z.log_prob(z_sample),
-                                       [self.batch_size * self.n_samples, self.z_dim]), 1)
-        log_iws = tf.reshape(nll, [self.batch_size, self.n_samples]) \
+        kld = tf.reduce_sum(tf.reshape(self.q_z.log_prob(z_sample) - self.p_z.log_prob(z_sample),
+                                       [self.batch_size * self.n_samples, self.z_dim]), 1)  # direction?
+
+        # calculate importance weights using logsumexp and exp-normalize tricks
+        log_iws = tf.reshape(log_lik, [self.batch_size, self.n_samples]) \
             + tf.reshape(kld, [self.batch_size, self.n_samples])
-        max_log_iws = tf.reduce_max(log_iws, axis=1, keepdims=True)  # ???
-
-        # subtract max for numerical stability
-        importance_weights = tf.log(tf.reduce_mean(tf.exp(log_iws - max_log_iws), axis=1))  # ???
-
-        # normalization constant?
-        self.loss = tf.reduce_mean(max_log_iws) + tf.reduce_mean(importance_weights)
-        self.elbo = -self.loss
+        max_log_iws = tf.reduce_max(log_iws, axis=1, keepdims=True)
+        self.iw_elbo = tf.reduce_mean(max_log_iws + tf.log(tf.reduce_mean(
+            tf.exp(log_iws - max_log_iws), axis=1, keepdims=True)))
+        self.loss = -self.iw_elbo
 
         # for now, hardcoding the Adam optimizer parameters used in the paper
+        # necessary to modify gradients for importance weighting? reparameterization trick takes care of it?
         optimizer = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.9, beta2=0.999, epsilon=0.0001)
         self.train_op = optimizer.minimize(self.loss)
 
@@ -267,10 +266,10 @@ class BernoulliIWAE(AbstVAE):
         # tf.summary.image('data', x_img)
         # sample_img = tf.reshape(self.out_dbn.sample(), [-1] + self.x_dims)
         # tf.summary.image('samples', sample_img)
-        tf.summary.scalar('nll', tf.reduce_mean(nll))
+        tf.summary.scalar('log_lik', tf.reduce_mean(log_lik))
         tf.summary.scalar('kl_div', tf.reduce_mean(kld))
         tf.summary.scalar('loss', self.loss)
-        tf.summary.scalar('elbo', self.elbo)
+        tf.summary.scalar('iw_elbo', self.iw_elbo)
         self.merged = tf.summary.merge_all()
 
 
