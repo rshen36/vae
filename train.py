@@ -16,7 +16,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # TODO: input checks
-    parser.add_argument('--model', type=str, default='bernoulli_vae',
+    parser.add_argument('--model', type=str, default='bernoulli_iwae',
                         choices=['bernoulli_vae', 'gaussian_vae', 'bernoulli_iwae'],
                         help='type of variational autoencoder model (default: bernoulli_vae)' +
                              'options: [bernoulli_vae, gaussian_vae, bernoulli_iwae]')
@@ -24,8 +24,6 @@ def parse_args():
                         choices=['mnist', 'frey_face', 'fashion_mnist'],
                         help='dataset on which to train (default: mnist)\n' +
                              'options: [mnist, frey_face, fashion_mnist]')
-    parser.add_argument('--train_test', type=str, default='train', choices=['train', 'test'],
-                        help='training or test dataset (default: train)')
     parser.add_argument('--experiment_dir', type=str, help='directory in which to place training output files')
 
     # ISSUE: any way to add ability to specify encoder/decoder architectures?
@@ -40,8 +38,8 @@ def parse_args():
                         help='frequency (in global steps) to log current results (default: 1)')
 
     # also allow specification of optimizer to use?
-    parser.add_argument('--lr', type=float, default=.02, help='learning rate (default: .02)')
-    parser.add_argument('--z_dim', type=int, default=20, help='dimensionality of latent variable (default: 20)')
+    parser.add_argument('--lr', type=float, default=.001, help='learning rate (default: .02)')
+    parser.add_argument('--z_dim', type=int, default=50, help='dimensionality of latent variable (default: 20)')
 
     # ISSUE: currently only implemented for IWAE
     parser.add_argument('--mc_samples', type=int, default=1, help='number of MC samples to run per batch (default: 1)')
@@ -63,17 +61,15 @@ if __name__ == "__main__":
 
     # does the random seed set above also set the random seed for this class instance?
     dataset = load_data(dataset=args.dataset)
-    if args.train_test == "train":
-        dataset = dataset.train
-    else:
-        dataset = dataset.test
     logger.info("Successfully loaded dataset {}".format(args.dataset))
+
+    # TODO: allow for loading of previous checkpoint
 
     # output directories
     if not args.experiment_dir:
         args.experiment_dir = os.path.join(os.getcwd(), "_".join(
-            [args.model, args.dataset, args.train_test, "z" + str(args.z_dim),
-             "h" + str(args.hidden_dim), "k" + str(args.mc_samples)]))
+            [args.model, args.dataset, "h" + str(args.hidden_dim),
+             "k" + str(args.mc_samples), "z" + str(args.z_dim)]))
     checkpoint_dir = os.path.join(args.experiment_dir, "checkpoints")
     checkpoint_path = os.path.join(checkpoint_dir, "model")
     summary_dir = os.path.join(args.experiment_dir, "summaries")
@@ -94,23 +90,22 @@ if __name__ == "__main__":
     with open(args_file, 'w') as f:
         json.dump(vars(args), f)
     with open(results_file, 'w') as f:  # write log file as csv with header
-        f.write("Epoch,Global step,Average loss,ELBO\n")
+        f.write("Epoch,Global step,Samples,Average loss,ELBO,Test ELBO\n")
 
     with tf.Session() as sess:
         # ISSUE: how best to allow for variable specification of the model?
         # does the random seed set above also set the random seed for this class instance?
+        importance_weights = False
         if args.model == "bernoulli_iwae":
-            model = BernoulliIWAE(x_dims=dataset.img_dims, batch_size=args.batch_size, n_samples=args.mc_samples)
+            model = BernoulliIWAE(x_dims=dataset.train.img_dims, batch_size=args.batch_size, n_samples=args.mc_samples)
             importance_weights = True
             i = 0
         elif args.model == "bernoulli_vae":
-            model = BernoulliVAE(x_dims=dataset.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
+            model = BernoulliVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
                                  lr=args.lr, model_name=args.model)
-            importance_weights = False
         else:
-            model = GaussianVAE(x_dims=dataset.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
+            model = GaussianVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
                                 lr=args.lr, model_name=args.model)
-            importance_weights = False
 
         global_step = 0
         saver = tf.train.Saver()
@@ -121,14 +116,14 @@ if __name__ == "__main__":
         saver.save(sess, checkpoint_path, global_step=global_step)
 
         # Dataset class keeps track of steps in current epoch and number epochs elapsed
-        while dataset.epochs_completed < args.num_epochs:
+        while dataset.train.epochs_completed < args.num_epochs:
             cur_epoch_completed = False  # ew
             while not cur_epoch_completed:
-                batch = dataset.next_batch(args.batch_size)
+                batch = dataset.train.next_batch(args.batch_size)
                 if importance_weights:
                     # TODO: do this better
                     summary, loss, elbo, _ = sess.run(
-                        [model.merged, model.loss, model.iw_elbo, model.train_op],
+                        [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
                             model.x: batch[0],
                             model.lr: args.lr
@@ -137,27 +132,31 @@ if __name__ == "__main__":
                     summary, loss, elbo, _ = sess.run(
                         [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
-                            model.x: batch[0],
-                            model.noise: np.random.randn(args.batch_size, args.z_dim)
+                            model.x: batch[0]
                         })
+                test_elbo = sess.run(model.elbo, feed_dict={
+                    model.x: dataset.test.next_batch(args.batch_size)[0]})
                 global_step += 1
-                cur_epoch_completed = dataset.cur_epoch_completed
+                cur_epoch_completed = dataset.train.cur_epoch_completed
 
                 summary_writer.add_summary(summary, global_step)
                 summary_writer.flush()
 
             # update lr according to schema specified in paper
             if importance_weights:
-                if dataset.epochs_completed > 3 ** i:
+                if dataset.train.epochs_completed > 3 ** i:
                     i += 1
                     lr = 0.001 * (10 ** (-i / 7))
 
-            if dataset.epochs_completed % args.checkpoint_freq == 0:
+            if dataset.train.epochs_completed % args.checkpoint_freq == 0:
                 saver.save(sess, checkpoint_path, global_step=global_step)
 
-            if dataset.epochs_completed % args.print_freq == 0:
+            if dataset.train.epochs_completed % args.print_freq == 0:
                 # better way of logging to stdout and a log file?
-                logger.info("Epoch: {}   Global step: {}   Average loss: {}   ELBO: {}"
-                            .format(dataset.epochs_completed, global_step, loss, elbo))
+                logger.info("Epoch: {}   Global step: {}   # Samples: {}   Average loss: {}   ELBO: {}   Test ELBO: {}"
+                            .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
+                                    loss, elbo, test_elbo))
                 with open(results_file, 'a') as f:
-                    f.write("{},{},{},{}\n".format(dataset.epochs_completed, global_step, loss, elbo))
+                    f.write("{},{},{},{},{},{}\n"
+                            .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
+                                    loss, elbo, test_elbo))
