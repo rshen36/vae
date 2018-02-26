@@ -106,9 +106,11 @@ if __name__ == "__main__":
         elif args.model == "bernoulli_vae":
             model = BernoulliVAE(x_dims=dataset.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
                                  lr=args.lr, model_name=args.model)
+            importance_weights = False
         else:
             model = GaussianVAE(x_dims=dataset.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
                                 lr=args.lr, model_name=args.model)
+            importance_weights = False
 
         global_step = 0
         saver = tf.train.Saver()

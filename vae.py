@@ -191,16 +191,18 @@ class BernoulliIWAE(AbstVAE):
     def _build_model(self):
         # input points
         self.x = tf.placeholder(tf.float32, shape=[self.batch_size, int(np.prod(self.x_dims))], name="X")
-        # self.noise = tf.placeholder(tf.float32, shape=[self.batch_size * self.n_samples, self.z_dim], name="noise")
-        self.lr = tf.placeholder(tf.float32, shape=(), name="lr")  # shape?
-        self.p_z = dbns.Normal(loc=tf.zeros(shape=[self.batch_size, self.z_dim]),
-                               scale=tf.ones(shape=[self.batch_size, self.z_dim]))  # ???
+        x = tf.tile(self.x, multiples=[self.n_samples, 1])
+        self.lr = tf.placeholder(tf.float32, shape=(), name="lr")
+
+        # okay to sample this way?
+        self.p_z = dbns.Normal(loc=tf.zeros(shape=[self.batch_size * self.n_samples, self.z_dim]),
+                               scale=tf.ones(shape=[self.batch_size * self.n_samples, self.z_dim]))
 
         # set up network
         with tf.variable_scope("encoder"):
             # Initialization via heuristic specified by Glorot & Bengio 2010
             # should the seed be set with the initializers?
-            enet = layers.fully_connected(self.x, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
+            enet = layers.fully_connected(x, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=layers.xavier_initializer(),
                                           biases_initializer=layers.xavier_initializer())
             enet = layers.fully_connected(enet, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
@@ -213,12 +215,7 @@ class BernoulliIWAE(AbstVAE):
             z_sigma = 1e-6 + tf.exp(z_params[:, :self.z_dim])  # 1e-6 still necessary?
             self.q_z = dbns.Normal(loc=z_mu, scale=z_sigma)  # did they predict var or stddev?
 
-        # z = z_mu + tf.multiply(z_sigma, self.noise)
-        z_sample = self.p_z.sample(self.n_samples)
-        z = tf.tile(z_mu, multiples=[self.n_samples, 1]) + tf.multiply(
-            tf.tile(z_sigma, multiples=[self.n_samples, 1]),
-            tf.reshape(z_sample, [self.batch_size * self.n_samples, self.z_dim]))
-        # z = self.q_z.sample()  # ???
+        z = z_mu + tf.multiply(z_sigma, self.p_z.sample())
 
         with tf.variable_scope("decoder"):
             # Initialization via heuristic specified by Glorot & Bengio 2010
@@ -229,28 +226,22 @@ class BernoulliIWAE(AbstVAE):
             dnet = layers.fully_connected(dnet, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=layers.xavier_initializer(),
                                           biases_initializer=layers.xavier_initializer())
-            self.x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)),
-                                                activation_fn=tf.nn.sigmoid,
-                                                weights_initializer=layers.xavier_initializer(),
-                                                biases_initializer=layers.xavier_initializer()
-                                                )  # Bernoulli MLP decoder
+            x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)), activation_fn=tf.nn.sigmoid,
+                                           weights_initializer=layers.xavier_initializer(),
+                                           biases_initializer=layers.xavier_initializer()
+                                           )  # Bernoulli MLP decoder
             # out_params = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)),
             #                                     activation_fn=tf.nn.sigmoid,
             #                                     weights_initializer=layers.xavier_initializer(),
             #                                     biases_initializer=layers.xavier_initializer())
-            # self.out_dbn = dbns.Bernoulli(logits=out_params)
+            self.out_dbn = dbns.Bernoulli(logits=x_hat)
 
-        log_lik = tf.reduce_sum(tf.tile(self.x, multiples=[self.n_samples, 1]) * tf.log(1e-8 + self.x_hat) +
-                                (1 - tf.tile(self.x, multiples=[self.n_samples, 1])) *
-                                tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli log-likelihood
-        # kld = 0.5 * tf.reduce_sum(tf.square(z_mu) + tf.square(z_sigma) - tf.log(tf.square(z_sigma)) - 1, 1)
-        # kld = tf.reduce_sum(dbns.kl_divergence(self.q_z, self.p_z), 1)  # ???
-        kld = tf.reduce_sum(tf.reshape(self.q_z.log_prob(z_sample) - self.p_z.log_prob(z_sample),
-                                       [self.batch_size * self.n_samples, self.z_dim]), 1)  # direction?
+        log_lik = tf.reduce_sum(x * tf.log(1e-8 + x_hat) + (1 - x) * tf.log(1e-8 + 1 - x_hat), 1)
+        latent_logdiffs = tf.reduce_sum(self.p_z.log_prob(z), 1) - tf.reduce_sum(self.q_z.log_prob(z), 1)  # ???
 
         # calculate importance weights using logsumexp and exp-normalize tricks
         log_iws = tf.reshape(log_lik, [self.batch_size, self.n_samples]) \
-            + tf.reshape(kld, [self.batch_size, self.n_samples])
+            + tf.reshape(latent_logdiffs, [self.batch_size, self.n_samples])
         max_log_iws = tf.reduce_max(log_iws, axis=1, keepdims=True)
         self.iw_elbo = tf.reduce_mean(max_log_iws + tf.log(tf.reduce_mean(
             tf.exp(log_iws - max_log_iws), axis=1, keepdims=True)))
@@ -262,12 +253,12 @@ class BernoulliIWAE(AbstVAE):
         self.train_op = optimizer.minimize(self.loss)
 
         # tensorboard summaries
-        # x_img = tf.reshape(self.x, [-1] + self.x_dims)
-        # tf.summary.image('data', x_img)
-        # sample_img = tf.reshape(self.out_dbn.sample(), [-1] + self.x_dims)
-        # tf.summary.image('samples', sample_img)
+        x_img = tf.reshape(x, [-1] + self.x_dims)
+        tf.summary.image('data', x_img)
+        sample_img = tf.reshape(x_hat, [-1] + self.x_dims)
+        tf.summary.image('samples', sample_img)
         tf.summary.scalar('log_lik', tf.reduce_mean(log_lik))
-        tf.summary.scalar('kl_div', tf.reduce_mean(kld))
+        tf.summary.scalar('latent_logdiffs', tf.reduce_mean(latent_logdiffs))
         tf.summary.scalar('loss', self.loss)
         tf.summary.scalar('iw_elbo', self.iw_elbo)
         self.merged = tf.summary.merge_all()
