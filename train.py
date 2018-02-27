@@ -4,6 +4,7 @@ import logging
 import argparse
 import numpy as np
 import tensorflow as tf
+from scipy.misc import imsave
 
 from vae import BernoulliVAE, GaussianVAE, BernoulliIWAE
 from load_data import load_data
@@ -45,8 +46,8 @@ def parse_args():
     parser.add_argument('--mc_samples', type=int, default=1, help='number of MC samples to run per batch (default: 1)')
 
     # ISSUE: assumes MLP architecture
-    parser.add_argument('--hidden_dim', type=int, default=200,
-                        help='dimensionality of the hidden layers in the architecture (default: 200)')
+    parser.add_argument('--hidden_dim', type=int, default=500,
+                        help='dimensionality of the hidden layers in the architecture (default: 500)')
 
     return parser.parse_args()
 
@@ -81,8 +82,8 @@ if __name__ == "__main__":
         os.makedirs(checkpoint_dir)
     if not os.path.exists(summary_dir):
         os.makedirs(summary_dir)
-    if os.path.exists(results_file):
-        raise AssertionError("Results log file already exists. Change log file specification to prevent overwrite.")
+    # if os.path.exists(results_file):
+    #     raise AssertionError("Results log file already exists. Change log file specification to prevent overwrite.")
     logger.info("Checkpoints saved at {}".format(checkpoint_dir))
     logger.info("Summaries saved at {}".format(summary_dir))
     logger.info("Logging results to {}".format(results_file))
@@ -133,10 +134,13 @@ if __name__ == "__main__":
                     summary, loss, elbo, _ = sess.run(
                         [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
-                            model.x: batch[0]
+                            model.x: batch[0],
+                            model.noise: np.random.randn(args.batch_size, args.z_dim)
                         })
                 test_elbo = sess.run(model.elbo, feed_dict={
-                    model.x: dataset.test.next_batch(args.batch_size)[0]})
+                    model.x: dataset.test.next_batch(args.batch_size)[0],
+                    model.noise: np.random.randn(args.batch_size, args.z_dim)
+                })
                 global_step += 1
                 cur_epoch_completed = dataset.train.cur_epoch_completed
 
@@ -161,3 +165,26 @@ if __name__ == "__main__":
                     f.write("{},{},{},{},{},{}\n"
                             .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
                                     loss, elbo, test_elbo))
+
+        # get interpolation of latent manifold
+        viz = np.empty(shape=(dataset.train.img_dims[0] * 20, dataset.train.img_dims[1] * 20))
+        vals = np.linspace(start=-1, stop=1, num=20)
+        zs = sess.run(model.z, feed_dict={
+            model.x: dataset.train.images,
+            model.noise: np.random.randn(dataset.train.num_examples, args.z_dim)
+        })
+        z_mu = np.average(zs[:, :args.z_dim], axis=0)
+        z_sigma = np.exp(np.average(zs[:, args.z_dim:], axis=0))
+        for i in range(len(vals)):
+            for j in range(len(vals)):
+                # z = np.reshape(0.5 * ((1 - vals[j]) * zs[0, :] + vals[j] * zs[1, :]) +
+                #                0.5 * ((1 - vals[i]) * zs[0, :] + vals[i] * zs[2, :]), (1, args.z_dim))
+                z = np.reshape(z_mu + np.dot(z_sigma, np.array([vals[i], vals[j]])), (1, 2))
+                x_hat = sess.run(model.sample, feed_dict={model.z_pl: z})
+                x_hat = np.reshape(x_hat, dataset.train.img_dims[:2])
+                x_hat = 1 - x_hat
+                viz[(i * dataset.train.img_dims[0]):((i+1) * dataset.train.img_dims[1]),
+                    (j * dataset.train.img_dims[0]):((j+1) * dataset.train.img_dims[1])] = x_hat
+        imsave('./test.png', viz)
+
+

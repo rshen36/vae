@@ -24,53 +24,62 @@ class AbstVAE:
 
 
 class BernoulliVAE(AbstVAE):
-    def __init__(self, x_dims, z_dim=100, hidden_dim=500, lr=.02, batch_size=100, seed=123, model_name="vae"):
+    def __init__(self, x_dims, z_dim=100, hidden_dim=500, lr=.02, seed=123, model_name="vae"):
         super().__init__(seed=seed, model_scope=model_name)
         self.x_dims = x_dims  # TODO: figure out how to deal with channels/color images
         self.z_dim = z_dim
         self.hidden_dim = hidden_dim
         self.lr = lr
-        self.batch_size = batch_size
         with tf.variable_scope(self.model_scope):
             self._build_model()
 
-    def _build_model(self):
-        # input points
-        self.x = tf.placeholder(tf.float32, shape=[self.batch_size, int(np.prod(self.x_dims))], name="X")
-        self.p_z = dbns.Normal(loc=tf.zeros(shape=[self.batch_size, self.z_dim], dtype=tf.float32),
-                               scale=tf.ones(shape=[self.batch_size, self.z_dim], dtype=tf.float32))
-
-        # set up network
-        with tf.variable_scope("encoder"):
-            # for now, hardcoding model architecture as that specified in paper
-            # TODO: allow for variable definition of model architecture
-
-            enet = layers.fully_connected(self.x, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
+    def encoder(self, x, trainable=True, reuse=False):
+        with tf.variable_scope("encoder", reuse=reuse):
+            enet = layers.fully_connected(x, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                          biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
+                                          biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                          trainable=trainable)
             z_params = layers.fully_connected(enet, num_outputs=self.z_dim * 2, activation_fn=None,
                                               weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                              biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
-            z_mu = z_params[:, self.z_dim:]
-            z_sigma = tf.exp(z_params[:, :self.z_dim])
-            self.q_z = dbns.Normal(loc=z_mu, scale=z_sigma)
+                                              biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                              trainable=trainable)
 
-        z = z_mu + tf.multiply(z_sigma, self.p_z.sample())
-        # z = self.q_z.sample()
+        return z_params
 
-        with tf.variable_scope("decoder"):
+    def decoder(self, z, trainable=True, reuse=False):
+        with tf.variable_scope("decoder", reuse=reuse):
             # for now, hardcoding model architecture as that specified in paper
             # TODO: allow for variable definition of model architecture
 
             dnet = layers.fully_connected(z, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                          biases_initializer=tf.truncated_normal_initializer(stddev=0.01))
-            self.x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)),
-                                                activation_fn=tf.nn.sigmoid,
-                                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                                biases_initializer=tf.truncated_normal_initializer(stddev=0.01)
-                                                )  # Bernoulli MLP decoder
-            self.p_x_z = dbns.Bernoulli(logits=self.x_hat)
+                                          biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                          trainable=trainable)
+            x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)), activation_fn=tf.nn.sigmoid,
+                                           weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                           biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                           trainable=trainable)  # Bernoulli MLP decoder
+        return x_hat
+
+    def _build_model(self):
+        # input points
+        self.x = tf.placeholder(tf.float32, shape=[None, int(np.prod(self.x_dims))], name="X")
+        self.noise = tf.placeholder(tf.float32, shape=[None, self.z_dim], name="noise")
+        self.p_z = dbns.Normal(loc=tf.zeros_like(self.noise), scale=tf.ones_like(self.noise))
+
+        # encoder
+        z_params = self.encoder(self.x)
+        z_mu = z_params[:, self.z_dim:]
+        z_sigma = tf.exp(z_params[:, :self.z_dim])
+        self.q_z = dbns.Normal(loc=z_mu, scale=z_sigma)
+
+        # reparameterization trick
+        z = z_mu + tf.multiply(z_sigma, self.p_z.sample())
+        # z = self.q_z.sample()
+
+        # decoder
+        self.x_hat = self.decoder(z)
+        self.p_x_z = dbns.Bernoulli(logits=self.x_hat)
 
         nll_loss = -tf.reduce_sum(self.x * tf.log(1e-8 + self.x_hat) +
                                   (1 - self.x) * tf.log(1e-8 + 1 - self.x_hat), 1)  # Bernoulli nll
@@ -82,6 +91,11 @@ class BernoulliVAE(AbstVAE):
         # in original paper, lr chosen from {0.01, 0.02, 0.1} depending on first few iters training performance
         optimizer = tf.train.AdagradOptimizer(learning_rate=self.lr)
         self.train_op = optimizer.minimize(self.loss)
+
+        # for sampling
+        self.z = self.encoder(self.x, trainable=False, reuse=True)
+        self.z_pl = tf.placeholder(tf.float32, shape=[None, self.z_dim])
+        self.sample = self.decoder(self.z_pl, trainable=False, reuse=True)
 
         # tensorboard summaries
         x_img = tf.reshape(self.x, [-1] + self.x_dims)
