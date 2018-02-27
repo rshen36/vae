@@ -6,12 +6,8 @@ import tensorflow.contrib.distributions as dbns
 
 # parent class for all VAE variants
 class AbstVAE:
-    # def __init__(self, seed, experiment_dir, num_epochs, batch_size, model_scope):
     def __init__(self, seed, model_scope):
         self.seed = seed
-        # self.experiment_dir = experiment_dir
-        # self.num_epochs = num_epochs
-        # self.batch_size = batch_size
         self.model_scope = model_scope
         np.random.seed(self.seed)  # set random seed elsewhere?
 
@@ -42,7 +38,7 @@ class BernoulliVAE(AbstVAE):
         # input points
         self.x = tf.placeholder(tf.float32, shape=[self.batch_size, int(np.prod(self.x_dims))], name="X")
         self.p_z = dbns.Normal(loc=tf.zeros(shape=[self.batch_size, self.z_dim], dtype=tf.float32),
-                               scale=tf.zeros(shape=[self.batch_size, self.z_dim], dtype=tf.float32))
+                               scale=tf.ones(shape=[self.batch_size, self.z_dim], dtype=tf.float32))
 
         # set up network
         with tf.variable_scope("encoder"):

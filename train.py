@@ -16,7 +16,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # TODO: input checks
-    parser.add_argument('--model', type=str, default='bernoulli_iwae',
+    parser.add_argument('--model', type=str, default='bernoulli_vae',
                         choices=['bernoulli_vae', 'gaussian_vae', 'bernoulli_iwae'],
                         help='type of variational autoencoder model (default: bernoulli_vae)' +
                              'options: [bernoulli_vae, gaussian_vae, bernoulli_iwae]')
@@ -38,8 +38,8 @@ def parse_args():
                         help='frequency (in global steps) to log current results (default: 1)')
 
     # also allow specification of optimizer to use?
-    parser.add_argument('--lr', type=float, default=.001, help='learning rate (default: .02)')
-    parser.add_argument('--z_dim', type=int, default=50, help='dimensionality of latent variable (default: 20)')
+    parser.add_argument('--lr', type=float, default=.02, help='learning rate (default: .02)')
+    parser.add_argument('--z_dim', type=int, default=20, help='dimensionality of latent variable (default: 20)')
 
     # ISSUE: currently only implemented for IWAE
     parser.add_argument('--mc_samples', type=int, default=1, help='number of MC samples to run per batch (default: 1)')
@@ -116,6 +116,7 @@ if __name__ == "__main__":
         saver.save(sess, checkpoint_path, global_step=global_step)
 
         # Dataset class keeps track of steps in current epoch and number epochs elapsed
+        lr = args.lr
         while dataset.train.epochs_completed < args.num_epochs:
             cur_epoch_completed = False  # ew
             while not cur_epoch_completed:
@@ -126,7 +127,7 @@ if __name__ == "__main__":
                         [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
                             model.x: batch[0],
-                            model.lr: args.lr
+                            model.lr: lr
                         })
                 else:
                     summary, loss, elbo, _ = sess.run(
