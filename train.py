@@ -82,8 +82,8 @@ if __name__ == "__main__":
         os.makedirs(checkpoint_dir)
     if not os.path.exists(summary_dir):
         os.makedirs(summary_dir)
-    # if os.path.exists(results_file):
-    #     raise AssertionError("Results log file already exists. Change log file specification to prevent overwrite.")
+    if os.path.exists(results_file):
+        raise AssertionError("Results log file already exists. Change log file specification to prevent overwrite.")
     logger.info("Checkpoints saved at {}".format(checkpoint_dir))
     logger.info("Summaries saved at {}".format(summary_dir))
     logger.info("Logging results to {}".format(results_file))
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     with open(args_file, 'w') as f:
         json.dump(vars(args), f)
     with open(results_file, 'w') as f:  # write log file as csv with header
-        f.write("Epoch,Global step,Samples,Average loss,ELBO,Test ELBO\n")
+        f.write("Epoch,Global step,Samples,Average loss,ELBO,Test ELBO,NLL,Test NLL\n")
 
     with tf.Session() as sess:
         # ISSUE: how best to allow for variable specification of the model?
@@ -121,26 +121,30 @@ if __name__ == "__main__":
         while dataset.train.epochs_completed < args.num_epochs:
             cur_epoch_completed = False  # ew
             while not cur_epoch_completed:
-                batch = dataset.train.next_batch(args.batch_size)
+                batch_xs, batch_ys = dataset.train.next_batch(args.batch_size)
                 if importance_weights:
                     # TODO: do this better
-                    summary, loss, elbo, _ = sess.run(
-                        [model.merged, model.loss, model.elbo, model.train_op],
+                    summary, loss, elbo, nll, _ = sess.run(
+                        [model.merged, model.loss, model.elbo, model.nll, model.train_op],
                         feed_dict={
-                            model.x: batch[0],
+                            model.x: batch_xs,
                             model.lr: lr
                         })
+                    test_elbo, test_nll = sess.run([model.elbo, model.nll], feed_dict={
+                        model.x: dataset.test.next_batch(args.batch_size)[0],
+                        model.lr: lr
+                    })
                 else:
                     summary, loss, elbo, _ = sess.run(
                         [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
-                            model.x: batch[0],
+                            model.x: batch_xs,
                             model.noise: np.random.randn(args.batch_size, args.z_dim)
                         })
-                test_elbo = sess.run(model.elbo, feed_dict={
-                    model.x: dataset.test.next_batch(args.batch_size)[0],
-                    model.noise: np.random.randn(args.batch_size, args.z_dim)
-                })
+                    test_elbo = sess.run(model.elbo, feed_dict={
+                        model.x: dataset.test.next_batch(args.batch_size)[0],
+                        model.noise: np.random.randn(args.batch_size, args.z_dim)
+                    })
                 global_step += 1
                 cur_epoch_completed = dataset.train.cur_epoch_completed
 
@@ -158,33 +162,34 @@ if __name__ == "__main__":
 
             if dataset.train.epochs_completed % args.print_freq == 0:
                 # better way of logging to stdout and a log file?
-                logger.info("Epoch: {}   Global step: {}   # Samples: {}   Average loss: {}   ELBO: {}   Test ELBO: {}"
-                            .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
-                                    loss, elbo, test_elbo))
+                logger.info("Epoch: {}   ELBO: {}   Test ELBO: {}   NLL: {}   Test NLL: {}"
+                            .format(dataset.train.epochs_completed, elbo, test_elbo, nll, test_nll))
+                            # .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
+                            #         loss, elbo, test_elbo))
                 with open(results_file, 'a') as f:
-                    f.write("{},{},{},{},{},{}\n"
+                    f.write("{},{},{},{},{},{},{},{}\n"
                             .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
-                                    loss, elbo, test_elbo))
+                                    loss, elbo, test_elbo, nll, test_nll))
 
         # get interpolation of latent manifold
-        viz = np.empty(shape=(dataset.train.img_dims[0] * 20, dataset.train.img_dims[1] * 20))
-        vals = np.linspace(start=-1, stop=1, num=20)
-        zs = sess.run(model.z, feed_dict={
-            model.x: dataset.train.images,
-            model.noise: np.random.randn(dataset.train.num_examples, args.z_dim)
-        })
-        z_mu = np.average(zs[:, :args.z_dim], axis=0)
-        z_sigma = np.exp(np.average(zs[:, args.z_dim:], axis=0))
-        for i in range(len(vals)):
-            for j in range(len(vals)):
-                # z = np.reshape(0.5 * ((1 - vals[j]) * zs[0, :] + vals[j] * zs[1, :]) +
-                #                0.5 * ((1 - vals[i]) * zs[0, :] + vals[i] * zs[2, :]), (1, args.z_dim))
-                z = np.reshape(z_mu + np.dot(z_sigma, np.array([vals[i], vals[j]])), (1, 2))
-                x_hat = sess.run(model.sample, feed_dict={model.z_pl: z})
-                x_hat = np.reshape(x_hat, dataset.train.img_dims[:2])
-                x_hat = 1 - x_hat
-                viz[(i * dataset.train.img_dims[0]):((i+1) * dataset.train.img_dims[1]),
-                    (j * dataset.train.img_dims[0]):((j+1) * dataset.train.img_dims[1])] = x_hat
-        imsave('./test.png', viz)
+        # viz = np.empty(shape=(dataset.train.img_dims[0] * 20, dataset.train.img_dims[1] * 20))
+        # vals = np.linspace(start=-1, stop=1, num=20)
+        # zs = sess.run(model.z, feed_dict={
+        #     model.x: dataset.train.images,
+        #     model.noise: np.random.randn(dataset.train.num_examples, args.z_dim)
+        # })
+        # z_mu = np.average(zs[:, :args.z_dim], axis=0)
+        # z_sigma = np.exp(np.average(zs[:, args.z_dim:], axis=0))
+        # for i in range(len(vals)):
+        #     for j in range(len(vals)):
+        #         # z = np.reshape(0.5 * ((1 - vals[j]) * zs[0, :] + vals[j] * zs[1, :]) +
+        #         #                0.5 * ((1 - vals[i]) * zs[0, :] + vals[i] * zs[2, :]), (1, args.z_dim))
+        #         z = np.reshape(z_mu + np.dot(z_sigma, np.array([vals[i], vals[j]])), (1, 2))
+        #         x_hat = sess.run(model.sample, feed_dict={model.z_pl: z})
+        #         x_hat = np.reshape(x_hat, dataset.train.img_dims[:2])
+        #         x_hat = 1 - x_hat
+        #         viz[(i * dataset.train.img_dims[0]):((i+1) * dataset.train.img_dims[1]),
+        #             (j * dataset.train.img_dims[0]):((j+1) * dataset.train.img_dims[1])] = x_hat
+        # imsave('./test.png', viz)
 
 
