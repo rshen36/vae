@@ -22,24 +22,41 @@ class AbstVAE:
 
 
 class BernoulliVAE(AbstVAE):
-    def __init__(self, x_dims, z_dim=100, hidden_dim=500, lr=.02, seed=123, model_name="vae"):
+    def __init__(self, x_dims, z_dim=100, lr=.02, seed=123, arch_type="mlp", hidden_dims=[500],
+                 activation_fn=tf.nn.tanh, model_name="vae"):
         super().__init__(seed=seed, model_scope=model_name)
         self.x_dims = x_dims  # TODO: figure out how to deal with channels/color images
         self.z_dim = z_dim
-        self.hidden_dim = hidden_dim
+        self.hidden_dims = hidden_dims
         self.lr = lr
+        self.arch_type = arch_type
+        self.activation_fn = activation_fn
         with tf.variable_scope(self.model_scope):
             self._build_model()
 
     def encoder(self, x, reuse=False, trainable=True):
         with tf.variable_scope("encoder", reuse=reuse):
-            # for now, hardcoding model architecture as that specified in paper
-            # TODO: allow for variable definition of model architecture
-            enet = layers.fully_connected(x, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
-                                          weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                          biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                          trainable=trainable)
-            z_params = layers.fully_connected(enet, num_outputs=self.z_dim * 2, activation_fn=None,
+            net = x
+            if self.arch_type == "mlp":  # better way of doing this?
+                for dim in self.hidden_dims:
+                    # allow for variable specification of initializer?
+                    net = layers.fully_connected(net, num_outputs=dim, activation_fn=self.activation_fn,
+                                                  weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                                  biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                                  trainable=trainable)
+            elif self.arch_type == "conv":
+                # TODO: implement residual blocks
+                net = tf.reshape(net, shape=[None] + self.x_dims)  # assuming x comes in flattened
+                for dim in self.hidden_dims:  # in this case, dim = # filters
+                    # how to choose bw conv2d and conv3d? just use conv3d even for b&w?
+                    net = layers.conv2d(net, dim, kernel_size=(3, 3), activation_fn=None)
+                    net = layers.batch_norm(net)
+                    net = self.activation_fn(net)
+                    net = layers.max_pool2d(net, kernel_size=(2, 2))  # multiple conv_blocks before each pool op?
+                net = layers.flatten(net)
+            else:
+                raise ValueError("Specified architecture type not currently implemented.")
+            z_params = layers.fully_connected(net, num_outputs=self.z_dim * 2, activation_fn=None,
                                               weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                               biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                               trainable=trainable)
@@ -47,13 +64,28 @@ class BernoulliVAE(AbstVAE):
 
     def decoder(self, z, reuse=False, trainable=True):
         with tf.variable_scope("decoder", reuse=reuse):
-            # for now, hardcoding model architecture as that specified in paper
-            # TODO: allow for variable definition of model architecture
-            dnet = layers.fully_connected(z, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
-                                          weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                          biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                          trainable=trainable)
-            x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)), activation_fn=tf.nn.sigmoid,
+            net = z
+            if self.arch_type == "mlp":  # better way of doing this?
+                for dim in self.hidden_dims:
+                    # allow for variable specification of initializer?
+                    net = layers.fully_connected(net, num_outputs=dim, activation_fn=self.activation_fn,
+                                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                                 biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                                 trainable=trainable)
+            elif self.arch_type == "conv":
+                # TODO: implement residual blocks
+                net = tf.reshape(net, shape=[None] + self.x_dims)  # assuming x comes in flattened
+                for dim in self.hidden_dims:  # in this case, dim = # filters
+                    # how to choose bw conv2d and conv3d? just use conv3d even for b&w?
+                    net = layers.conv2d_transpose(net, dim, kernel_size=(3, 3), stride=2,
+                                                  activation_fn=None, trainable=trainable)
+                    # still do batch_norm?
+                    net = layers.batch_norm(net, trainable=trainable)
+                    net = self.activation_fn(net)
+                net = layers.flatten(net)
+            else:
+                raise ValueError("Specified architecture type not currently implemented.")
+            x_hat = layers.fully_connected(net, num_outputs=int(np.prod(self.x_dims)), activation_fn=tf.nn.sigmoid,
                                            weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                            biases_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                            trainable=trainable)  # Bernoulli MLP decoder
@@ -203,36 +235,41 @@ class BernoulliIWAE(AbstVAE):
             self._build_model()
 
     def encoder(self, x, reuse=False, trainable=True):
-        with tf.variable_scope("encoder"):
+        with tf.variable_scope("encoder", reuse=reuse):
             # Initialization via heuristic specified by Glorot & Bengio 2010
             # should the seed be set with the initializers?
             # TODO: allow for variable definition of model architecture
             enet = layers.fully_connected(x, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=layers.xavier_initializer(),
-                                          biases_initializer=layers.xavier_initializer())
+                                          biases_initializer=layers.xavier_initializer(),
+                                          trainable=trainable)
             enet = layers.fully_connected(enet, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=layers.xavier_initializer(),
-                                          biases_initializer=layers.xavier_initializer())
+                                          biases_initializer=layers.xavier_initializer(),
+                                          trainable=trainable)
             z_params = layers.fully_connected(enet, num_outputs=self.z_dim * 2, activation_fn=None,
                                               weights_initializer=layers.xavier_initializer(),
-                                              biases_initializer=layers.xavier_initializer())
+                                              biases_initializer=layers.xavier_initializer(),
+                                              trainable=trainable)
         return z_params
 
     def decoder(self, z, reuse=False, trainable=True):
-        with tf.variable_scope("decoder"):
+        with tf.variable_scope("decoder", reuse=reuse):
             # Initialization via heuristic specified by Glorot & Bengio 2010
             # should the seed be set with the initializers?
             # TODO: allow for variable definition of model architecture
             dnet = layers.fully_connected(z, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=layers.xavier_initializer(),
-                                          biases_initializer=layers.xavier_initializer())
+                                          biases_initializer=layers.xavier_initializer(),
+                                          trainable=trainable)
             dnet = layers.fully_connected(dnet, num_outputs=self.hidden_dim, activation_fn=tf.nn.tanh,
                                           weights_initializer=layers.xavier_initializer(),
-                                          biases_initializer=layers.xavier_initializer())
+                                          biases_initializer=layers.xavier_initializer(),
+                                          trainable=trainable)
             x_hat = layers.fully_connected(dnet, num_outputs=int(np.prod(self.x_dims)), activation_fn=tf.nn.sigmoid,
                                            weights_initializer=layers.xavier_initializer(),
-                                           biases_initializer=layers.xavier_initializer()
-                                           )  # Bernoulli MLP decoder
+                                           biases_initializer=layers.xavier_initializer(),
+                                           trainable=trainable)  # Bernoulli MLP decoder
         return x_hat
 
     def _build_model(self):
@@ -264,14 +301,33 @@ class BernoulliIWAE(AbstVAE):
         log_iws = tf.reshape(log_lik, [self.batch_size, self.n_samples]) + \
             tf.reshape(neg_kld, [self.batch_size, self.n_samples])
         max_log_iws = tf.reduce_max(log_iws, axis=1, keepdims=True)
-        self.elbo = tf.reduce_mean(max_log_iws + tf.log(tf.reduce_mean(
-            tf.exp(log_iws - max_log_iws), axis=1, keepdims=True)))
+        log_iws -= max_log_iws
+        # self.elbo = tf.reduce_mean(log_norm_const + max_log_iws - tf.log(float(self.n_samples)))
+        self.elbo = tf.reduce_mean(max_log_iws + tf.log(1e-8 + tf.reduce_mean(
+            tf.exp(log_iws), axis=1, keepdims=True)))
         self.loss = -self.elbo
         self.nll = -tf.reduce_mean(log_lik)
 
+        # compute gradients
+        log_norm_const = tf.log(tf.clip_by_value(tf.reduce_sum(tf.exp(log_iws), 1, keepdims=True), 1e-9, np.inf))
+        log_norm_iws = tf.reshape(log_iws - log_norm_const, shape=[-1])
+        norm_iws = tf.stop_gradient(tf.exp(log_norm_iws))
+        trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+        grads = tf.gradients(-tf.reshape(log_iws, [-1]) * norm_iws, trainable_vars)
+        grads_and_vars = zip(grads, trainable_vars)
+
+        # nll_loss = -tf.reduce_sum(x * tf.log(1e-8 + x_hat) + (1 - x) * tf.log(1e-8 + 1 - x_hat), 1)
+        # kl_loss = 0.5 * tf.reduce_sum(tf.square(z_mu) + tf.square(z_sigma) - tf.log(1e-8 + tf.square(z_sigma)) - 1, 1)
+        # # kl_loss = tf.reduce_sum(dbns.kl_divergence(self.q_z, self.p_z), 1)
+        # loss = tf.reduce_mean(tf.reshape(nll_loss, [self.batch_size, self.n_samples]) +
+        #                       tf.reshape(kl_loss, [self.batch_size, self.n_samples]), 1)
+        # self.loss = tf.reduce_mean(loss)
+        # self.elbo = -1.0 * tf.reduce_mean(loss)
+        # self.nll = tf.reduce_mean(tf.reduce_mean(tf.reshape(nll_loss, [self.batch_size, self.n_samples])))  # ???
+
         # for now, hardcoding the Adam optimizer parameters used in the paper
-        # necessary to modify gradients for importance weighting? reparameterization trick takes care of it?
         optimizer = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.9, beta2=0.999, epsilon=0.0001)
+        optimizer.apply_gradients(grads_and_vars)
         self.train_op = optimizer.minimize(self.loss)
 
         # for sampling
@@ -284,6 +340,8 @@ class BernoulliIWAE(AbstVAE):
         tf.summary.image('data', x_img)
         sample_img = tf.reshape(x_hat, [-1] + self.x_dims)
         tf.summary.image('samples', sample_img)
+        # tf.summary.scalar('reconstruction_loss', tf.reduce_mean(nll_loss))
+        # tf.summary.scalar('kl_loss', tf.reduce_mean(kl_loss))
         tf.summary.scalar('log_lik', tf.reduce_mean(log_lik))
         tf.summary.scalar('neg_kld', tf.reduce_mean(neg_kld))
         tf.summary.scalar('loss', self.loss)

@@ -13,8 +13,8 @@ from collections import namedtuple
 # from torchvision.datasets import MNIST, Fashion-MNIST, Omniglot
 from data_utils import get_file
 
-DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist']
-# DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist', 'cifar10', 'cifar100']  # TODO: color image datasets
+# DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist']
+DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist', 'cifar10', 'cifar100']
 Datasets = namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
@@ -38,9 +38,9 @@ class Dataset:
         self._num_examples = images.shape[0]
 
         # flatten images
-        # TODO: adjust for color images
         if reshape:
-            images = images.reshape(images.shape[0], images.shape[1] * images.shape[2])
+            # images = images.reshape(images.shape[0], images.shape[1] * images.shape[2])
+            images = images.reshape(images.shape[0], int(np.prod(images.shape[1:])))
         if dtype == np.float32:
             # convert from [0, 255] --> [0.0, 1.0]
             images = images.astype(np.float32)
@@ -121,6 +121,7 @@ class Dataset:
 
 def load_data(dataset='mnist', dtype=np.float32, reshape=True, seed=123):
     # more clever way of handling this?
+    # for now, handling b&w and color images differently: flatten b&w and retain dimensions for color
     if dataset == 'mnist':
         # datasets provided as tuples (imgs, labels) of data type uint8 (imgs in [0, 256])
         (train_images, train_labels), (test_images, test_labels) = _load_mnist()
@@ -131,15 +132,15 @@ def load_data(dataset='mnist', dtype=np.float32, reshape=True, seed=123):
     #     (train_images, train_labels), (test_images, test_labels) = _load_omniglot()
     elif dataset == 'fashion_mnist':
         (train_images, train_labels), (test_images, test_labels) = _load_fashion_mnist()
-    # TODO: color images
-    # loading functions for cifar10 and cifar100 work,
-    #   but need to implement ability to accept color images upstream
-    # elif dataset == 'cifar10':
-    #     train_images, train_labels = _load_cifar10()
-    # elif dataset == 'cifar100':
-    #     train_images, train_labels = _load_cifar_100()
+    elif dataset == 'cifar10':
+        (train_images, train_labels), (test_images, test_labels) = _load_cifar10()
+        reshape = False  # TODO: do this better
+    elif dataset == 'cifar100':
+        (train_images, train_labels), (test_images, test_labels) = _load_cifar_100()
+        reshape = False  # TODO: do this better
     # elif dataset == 'celebA':
-    #     train_images, train_labels = _load_celebA()
+    #     (train_images, train_labels), (test_images, test_labels) = _load_celebA()
+    #     reshape = False  # TODO: do this better
     else:
         raise ValueError(
             'Unavailable dataset specified. Datasets available: [{}]'.format(', '.join(DATASETS_AVAILABLE)))

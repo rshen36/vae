@@ -19,7 +19,7 @@ def parse_args():
     # TODO: input checks
     parser.add_argument('--model', type=str, default='bernoulli_vae',
                         choices=['bernoulli_vae', 'gaussian_vae', 'bernoulli_iwae'],
-                        help='type of variational autoencoder model (default: bernoulli_vae)' +
+                        help='type of variational autoencoder model (default: bernoulli_vae)\n' +
                              'options: [bernoulli_vae, gaussian_vae, bernoulli_iwae]')
     parser.add_argument('--dataset', type=str, default='mnist',
                         choices=['mnist', 'frey_face', 'fashion_mnist'],
@@ -27,7 +27,6 @@ def parse_args():
                              'options: [mnist, frey_face, fashion_mnist]')
     parser.add_argument('--experiment_dir', type=str, help='directory in which to place training output files')
 
-    # ISSUE: any way to add ability to specify encoder/decoder architectures?
     parser.add_argument('--seed', type=int, default=123, help='seed for rng (default: 123)')
     parser.add_argument('--num_epochs', type=int, default=1000,
                         help='number of training epochs (default: 1000)')
@@ -45,15 +44,12 @@ def parse_args():
     # ISSUE: currently only implemented for IWAE
     parser.add_argument('--mc_samples', type=int, default=1, help='number of MC samples to run per batch (default: 1)')
 
-    # ISSUE: assumes MLP architecture
-    parser.add_argument('--hidden_dim', type=int, default=500,
+    parser.add_argument('--arch_type', type=str, default='mlp', choices=['mlp', 'conv'],
+                        help='architecture type for autoencoder network (default: mlp)')
+    parser.add_argument('--hidden_dims', nargs='+', type=int, default=500,
                         help='dimensionality of the hidden layers in the architecture (default: 500)')
 
     return parser.parse_args()
-
-
-def train_tf():
-    return
 
 
 if __name__ == "__main__":
@@ -69,8 +65,7 @@ if __name__ == "__main__":
     # output directories
     if not args.experiment_dir:
         args.experiment_dir = os.path.join(os.getcwd(), "_".join(
-            [args.model, args.dataset, "h" + str(args.hidden_dim),
-             "k" + str(args.mc_samples), "z" + str(args.z_dim)]))
+            [args.model, args.dataset, "k" + str(args.mc_samples), "z" + str(args.z_dim)]))
     checkpoint_dir = os.path.join(args.experiment_dir, "checkpoints")
     checkpoint_path = os.path.join(checkpoint_dir, "model")
     summary_dir = os.path.join(args.experiment_dir, "summaries")
@@ -102,8 +97,8 @@ if __name__ == "__main__":
             importance_weights = True
             i = 0
         elif args.model == "bernoulli_vae":
-            model = BernoulliVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
-                                 lr=args.lr, model_name=args.model)
+            model = BernoulliVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, lr=args.lr, arch_type=args.arch_type,
+                                 hidden_dims=args.hidden_dims, model_name=args.model)
         else:
             model = GaussianVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
                                 lr=args.lr, model_name=args.model)
@@ -162,10 +157,9 @@ if __name__ == "__main__":
 
             if dataset.train.epochs_completed % args.print_freq == 0:
                 # better way of logging to stdout and a log file?
-                logger.info("Epoch: {}   ELBO: {}   Test ELBO: {}   NLL: {}   Test NLL: {}"
-                            .format(dataset.train.epochs_completed, elbo, test_elbo, nll, test_nll))
-                            # .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
-                            #         loss, elbo, test_elbo))
+                logger.info("Epoch: {}   Global step: {}   # Samples: {}   Average Loss: {}   ELBO: {}   Test ELBO: {}"
+                            .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
+                                    loss, elbo, test_elbo))
                 with open(results_file, 'a') as f:
                     f.write("{},{},{},{},{},{},{},{}\n"
                             .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
