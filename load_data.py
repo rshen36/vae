@@ -10,7 +10,7 @@ import numpy as np
 from scipy.io import loadmat
 from collections import namedtuple
 
-# from torchvision.datasets import MNIST, Fashion-MNIST, Omniglot
+# import torchvision.datasets as dsets
 from data_utils import get_file
 
 # DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist']
@@ -134,13 +134,10 @@ def load_data(dataset='mnist', dtype=np.float32, reshape=True, seed=123):
         (train_images, train_labels), (test_images, test_labels) = _load_fashion_mnist()
     elif dataset == 'cifar10':
         (train_images, train_labels), (test_images, test_labels) = _load_cifar10()
-        reshape = False  # TODO: do this better
     elif dataset == 'cifar100':
         (train_images, train_labels), (test_images, test_labels) = _load_cifar_100()
-        reshape = False  # TODO: do this better
     # elif dataset == 'celebA':
     #     (train_images, train_labels), (test_images, test_labels) = _load_celebA()
-    #     reshape = False  # TODO: do this better
     else:
         raise ValueError(
             'Unavailable dataset specified. Datasets available: [{}]'.format(', '.join(DATASETS_AVAILABLE)))
@@ -219,8 +216,6 @@ def _load_freyface(path='frey_rawface.mat'):
 #                               origin=base + fname,
 #                               extract=True,
 #                               archive_format='zip'))
-#     for path in paths:
-#         f = np.load(path)
 
 
 def _load_fashion_mnist():

@@ -1,10 +1,10 @@
 import os
 import json
+import random
 import logging
 import argparse
 import numpy as np
 import tensorflow as tf
-from scipy.misc import imsave
 
 from vae import BernoulliVAE, GaussianVAE, BernoulliIWAE
 from load_data import load_data
@@ -44,6 +44,7 @@ def parse_args():
     # ISSUE: currently only implemented for IWAE
     parser.add_argument('--mc_samples', type=int, default=1, help='number of MC samples to run per batch (default: 1)')
 
+    # ISSUE: currently only implemented for BernoulliVAE
     parser.add_argument('--arch_type', type=str, default='mlp', choices=['mlp', 'conv'],
                         help='architecture type for autoencoder network (default: mlp)')
     parser.add_argument('--hidden_dims', nargs='+', type=int, default=500,
@@ -54,13 +55,23 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    rand_fname = str(random.getrandbits(128))  # generate this filename before setting seed
     np.random.seed(args.seed)
+
+    # input checks
+    # better way of doing this? something more directly with argparse?
+    assert args.num_epochs > 0
+    assert args.batch_size > 0
+    assert args.checkpoint_freq > 0
+    assert args.print_freq > 0
+    assert args.lr > 0
+    assert args.z_dim > 0
+    assert args.mc_samples > 0
+    assert all(hdim > 0 for hdim in args.hidden_dims)
 
     # does the random seed set above also set the random seed for this class instance?
     dataset = load_data(dataset=args.dataset)
     logger.info("Successfully loaded dataset {}".format(args.dataset))
-
-    # TODO: allow for loading of previous checkpoint
 
     # output directories
     if not args.experiment_dir:
@@ -78,7 +89,13 @@ if __name__ == "__main__":
     if not os.path.exists(summary_dir):
         os.makedirs(summary_dir)
     if os.path.exists(results_file):
-        raise AssertionError("Results log file already exists. Change log file specification to prevent overwrite.")
+        old_rf = results_file
+        results_file = os.path.join(args.experiment_dir, rand_fname + ".csv")
+        logger.warning("{} already exists. Logging output to {}.".format(old_rf, results_file))
+    if os.path.exists(args_file):
+        old_af = args_file
+        results_file = os.path.join(args.experiment_dir, rand_fname + ".json")
+        logger.warning("{} already exists. Logging arguments to {}.".format(old_af, args_file))
     logger.info("Checkpoints saved at {}".format(checkpoint_dir))
     logger.info("Summaries saved at {}".format(summary_dir))
     logger.info("Logging results to {}".format(results_file))
@@ -86,7 +103,7 @@ if __name__ == "__main__":
     with open(args_file, 'w') as f:
         json.dump(vars(args), f)
     with open(results_file, 'w') as f:  # write log file as csv with header
-        f.write("Epoch,Global step,Samples,Average loss,ELBO,Test ELBO,NLL,Test NLL\n")
+        f.write("Epoch,Global step,Samples,Average loss,ELBO,Test ELBO\n")
 
     with tf.Session() as sess:
         # ISSUE: how best to allow for variable specification of the model?
@@ -107,6 +124,13 @@ if __name__ == "__main__":
         saver = tf.train.Saver()
         summary_writer = tf.summary.FileWriter(summary_dir, sess.graph)
 
+        # TODO: adjust tracking of global step and initial setup for loading checkpoints
+        # load latest checkpoint, if available
+        # ckpt = tf.train.latest_checkpoint(checkpoint_dir)
+        # if ckpt:
+        #     print("Loading model checkpoint {}\n".format(ckpt))
+        #     saver.restore(sess, ckpt)
+
         # initial setup
         sess.run(tf.global_variables_initializer())
         saver.save(sess, checkpoint_path, global_step=global_step)
@@ -119,13 +143,13 @@ if __name__ == "__main__":
                 batch_xs, batch_ys = dataset.train.next_batch(args.batch_size)
                 if importance_weights:
                     # TODO: do this better
-                    summary, loss, elbo, nll, _ = sess.run(
+                    summary, loss, elbo, _ = sess.run(
                         [model.merged, model.loss, model.elbo, model.nll, model.train_op],
                         feed_dict={
                             model.x: batch_xs,
                             model.lr: lr
                         })
-                    test_elbo, test_nll = sess.run([model.elbo, model.nll], feed_dict={
+                    test_elbo = sess.run([model.elbo, model.nll], feed_dict={
                         model.x: dataset.test.next_batch(args.batch_size)[0],
                         model.lr: lr
                     })
@@ -161,29 +185,8 @@ if __name__ == "__main__":
                             .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
                                     loss, elbo, test_elbo))
                 with open(results_file, 'a') as f:
-                    f.write("{},{},{},{},{},{},{},{}\n"
+                    f.write("{},{},{},{},{},{},\n"
                             .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
-                                    loss, elbo, test_elbo, nll, test_nll))
-
-        # get interpolation of latent manifold
-        # viz = np.empty(shape=(dataset.train.img_dims[0] * 20, dataset.train.img_dims[1] * 20))
-        # vals = np.linspace(start=-1, stop=1, num=20)
-        # zs = sess.run(model.z, feed_dict={
-        #     model.x: dataset.train.images,
-        #     model.noise: np.random.randn(dataset.train.num_examples, args.z_dim)
-        # })
-        # z_mu = np.average(zs[:, :args.z_dim], axis=0)
-        # z_sigma = np.exp(np.average(zs[:, args.z_dim:], axis=0))
-        # for i in range(len(vals)):
-        #     for j in range(len(vals)):
-        #         # z = np.reshape(0.5 * ((1 - vals[j]) * zs[0, :] + vals[j] * zs[1, :]) +
-        #         #                0.5 * ((1 - vals[i]) * zs[0, :] + vals[i] * zs[2, :]), (1, args.z_dim))
-        #         z = np.reshape(z_mu + np.dot(z_sigma, np.array([vals[i], vals[j]])), (1, 2))
-        #         x_hat = sess.run(model.sample, feed_dict={model.z_pl: z})
-        #         x_hat = np.reshape(x_hat, dataset.train.img_dims[:2])
-        #         x_hat = 1 - x_hat
-        #         viz[(i * dataset.train.img_dims[0]):((i+1) * dataset.train.img_dims[1]),
-        #             (j * dataset.train.img_dims[0]):((j+1) * dataset.train.img_dims[1])] = x_hat
-        # imsave('./test.png', viz)
+                                    loss, elbo, test_elbo))
 
 
