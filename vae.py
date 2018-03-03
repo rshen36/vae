@@ -316,15 +316,6 @@ class BernoulliIWAE(AbstVAE):
         grads = tf.gradients(-tf.reshape(log_iws, [-1]) * norm_iws, trainable_vars)
         grads_and_vars = zip(grads, trainable_vars)
 
-        # nll_loss = -tf.reduce_sum(x * tf.log(1e-8 + x_hat) + (1 - x) * tf.log(1e-8 + 1 - x_hat), 1)
-        # kl_loss = 0.5 * tf.reduce_sum(tf.square(z_mu) + tf.square(z_sigma) - tf.log(1e-8 + tf.square(z_sigma)) - 1, 1)
-        # # kl_loss = tf.reduce_sum(dbns.kl_divergence(self.q_z, self.p_z), 1)
-        # loss = tf.reduce_mean(tf.reshape(nll_loss, [self.batch_size, self.n_samples]) +
-        #                       tf.reshape(kl_loss, [self.batch_size, self.n_samples]), 1)
-        # self.loss = tf.reduce_mean(loss)
-        # self.elbo = -1.0 * tf.reduce_mean(loss)
-        # self.nll = tf.reduce_mean(tf.reduce_mean(tf.reshape(nll_loss, [self.batch_size, self.n_samples])))  # ???
-
         # for now, hardcoding the Adam optimizer parameters used in the paper
         optimizer = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.9, beta2=0.999, epsilon=0.0001)
         optimizer.apply_gradients(grads_and_vars)
@@ -340,8 +331,6 @@ class BernoulliIWAE(AbstVAE):
         tf.summary.image('data', x_img)
         sample_img = tf.reshape(x_hat, [-1] + self.x_dims)
         tf.summary.image('samples', sample_img)
-        # tf.summary.scalar('reconstruction_loss', tf.reduce_mean(nll_loss))
-        # tf.summary.scalar('kl_loss', tf.reduce_mean(kl_loss))
         tf.summary.scalar('log_lik', tf.reduce_mean(log_lik))
         tf.summary.scalar('neg_kld', tf.reduce_mean(neg_kld))
         tf.summary.scalar('loss', self.loss)
