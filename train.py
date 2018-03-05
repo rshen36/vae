@@ -43,11 +43,7 @@ def parse_args():
 
     # ISSUE: currently only implemented for IWAE
     parser.add_argument('--mc_samples', type=int, default=1, help='number of MC samples to run per batch (default: 1)')
-
-    # ISSUE: currently only implemented for BernoulliVAE
-    parser.add_argument('--arch_type', type=str, default='mlp', choices=['mlp', 'conv'],
-                        help='architecture type for autoencoder network (default: mlp)')
-    parser.add_argument('--hidden_dims', nargs='+', type=int, default=500,
+    parser.add_argument('--hidden_dim', type=int, default=500,
                         help='dimensionality of the hidden layers in the architecture (default: 500)')
 
     return parser.parse_args()
@@ -67,7 +63,7 @@ if __name__ == "__main__":
     assert args.lr > 0
     assert args.z_dim > 0
     assert args.mc_samples > 0
-    assert all(hdim > 0 for hdim in args.hidden_dims)
+    assert args.hidden_dim > 0
 
     # does the random seed set above also set the random seed for this class instance?
     dataset = load_data(dataset=args.dataset)
@@ -114,8 +110,8 @@ if __name__ == "__main__":
             importance_weights = True
             i = 0
         elif args.model == "bernoulli_vae":
-            model = BernoulliVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, lr=args.lr, arch_type=args.arch_type,
-                                 hidden_dims=args.hidden_dims, model_name=args.model)
+            model = BernoulliVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, lr=args.lr,
+                                 hidden_dim=args.hidden_dim, model_name=args.model)
         else:
             model = GaussianVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
                                 lr=args.lr, model_name=args.model)
@@ -144,12 +140,12 @@ if __name__ == "__main__":
                 if importance_weights:
                     # TODO: do this better
                     summary, loss, elbo, _ = sess.run(
-                        [model.merged, model.loss, model.elbo, model.nll, model.train_op],
+                        [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
                             model.x: batch_xs,
                             model.lr: lr
                         })
-                    test_elbo = sess.run([model.elbo, model.nll], feed_dict={
+                    test_elbo = sess.run(model.elbo, feed_dict={
                         model.x: dataset.test.next_batch(args.batch_size)[0],
                         model.lr: lr
                     })
