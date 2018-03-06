@@ -182,7 +182,7 @@ if __name__ == "__main__":
                             .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
                                     loss, elbo, test_elbo))
                 with open(results_file, 'a') as f:
-                    f.write("{},{},{},{},{},{},\n"
+                    f.write("{},{},{},{},{},{}\n"
                             .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
                                     loss, elbo, test_elbo))
 
