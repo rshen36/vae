@@ -106,7 +106,8 @@ if __name__ == "__main__":
         # does the random seed set above also set the random seed for this class instance?
         importance_weights = False
         if args.model == "bernoulli_iwae":
-            model = BernoulliIWAE(x_dims=dataset.train.img_dims, batch_size=args.batch_size, n_samples=args.mc_samples)
+            model = BernoulliIWAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
+                                  batch_size=args.batch_size, n_samples=args.mc_samples, model_name=args.model)
             importance_weights = True
             i = 0
         elif args.model == "bernoulli_vae":
