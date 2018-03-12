@@ -283,21 +283,27 @@ class BernoulliIWAE(AbstVAE):
         h1_sigma_ = tf.exp(params_p_h1_h2[:, :100])
         self.p_h1_h2 = dbns.Normal(loc=h1_mu_, scale=h1_sigma_)
         h1_ = h1_mu_ + tf.multiply(h1_sigma_, self.p_h1_.sample())
-        x_hat = self.decoder(h1_, hidden_dim=200)
+        # x_hat = self.decoder(h1_, hidden_dim=200)
+        x_hat = self.decoder(h1, hidden_dim=200)
 
         # x_hat = self.decoder(z)
         # self.out_dbn = dbns.Bernoulli(logits=x_hat)
 
         # log_lik = tf.reduce_sum(x * tf.log(1e-8 + x_hat) + (1 - x) * tf.log(1e-8 + 1 - x_hat), 1)
         # neg_kld = tf.reduce_sum(self.p_z.log_prob(z) - self.q_z.log_prob(z), 1)
+        # log_lik = (tf.reduce_sum(x * tf.log(1e-8 + x_hat) + (1 - x) * tf.log(1e-8 + 1 - x_hat), 1) +
+        #            tf.reduce_sum(self.p_h1_h2.log_prob(h1), 1))
+        # neg_kld = (tf.reduce_sum(self.p_h1_h2.log_prob(h1_) - self.q_h1_x.log_prob(h1), 1) +
+        #            tf.reduce_sum(self.p_h1.log_prob(h1) - self.q_h1_x.log_prob(h1), 1) +
+        #            tf.reduce_sum(self.p_h2.log_prob(h2) - self.q_h2_h1.log_prob(h2), 1))
+
         log_lik = (tf.reduce_sum(x * tf.log(1e-8 + x_hat) + (1 - x) * tf.log(1e-8 + 1 - x_hat), 1) +
-                   tf.reduce_sum(self.p_h1_h2.log_prob(h1), 1))
-        neg_kld = (tf.reduce_sum(self.p_h1_h2.log_prob(h1_) - self.q_h1_x.log_prob(h1), 1) +
-                   tf.reduce_sum(self.p_h1.log_prob(h1) - self.q_h1_x.log_prob(h1), 1) +
-                   tf.reduce_sum(self.p_h2.log_prob(h2) - self.q_h2_h1.log_prob(h2), 1))
+                   tf.reduce_sum(self.p_h1_h2.log_prob(h1), 1) + tf.reduce_sum(self.p_h2.log_prob(h2), 1))
+        neg_kld = tf.reduce_sum(self.q_h1_x.log_prob(h1), 1) + tf.reduce_sum(self.q_h2_h1.log_prob(h2), 1)
 
         # calculate importance weights using logsumexp and exp-normalize tricks
-        log_iws = (tf.reshape(log_lik, [self.batch_size, self.n_samples]) +
+        # switch back to addition if this doesn't work
+        log_iws = (tf.reshape(log_lik, [self.batch_size, self.n_samples]) -
                    tf.reshape(neg_kld, [self.batch_size, self.n_samples]))
         max_log_iws = tf.reduce_max(log_iws, axis=1, keepdims=True)
         log_iws -= max_log_iws
@@ -305,7 +311,7 @@ class BernoulliIWAE(AbstVAE):
         self.elbo = tf.reduce_mean(max_log_iws + tf.log(1e-8 + tf.reduce_mean(
             tf.exp(log_iws), axis=1, keepdims=True)))
         self.loss = -self.elbo
-        self.nll = -tf.reduce_mean(log_lik)
+        # self.nll = -tf.reduce_mean(log_lik)
 
         # compute gradients
         log_norm_const = tf.log(tf.clip_by_value(tf.reduce_sum(tf.exp(log_iws), 1, keepdims=True), 1e-9, np.inf))
