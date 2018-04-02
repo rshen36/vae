@@ -1,5 +1,5 @@
 # adapted from tensorflow's tensorflow.contrib.learn.python.learn.datasets.mnist file
-# and from keras dataset loading files
+#    and from keras dataset loading files
 # very little of this code is originally written, and all credit should go to the original authors
 # the relevant original code has been brought here to help limit dependency and package compatibility issues
 import os
@@ -10,12 +10,10 @@ import numpy as np
 from scipy.io import loadmat
 from collections import namedtuple
 
-# import torchvision.datasets as dsets
 from data_utils import get_file
 
-# DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist']
 DATASETS_AVAILABLE = ['mnist', 'frey_face', 'fashion_mnist', 'cifar10', 'cifar100']
-Datasets = namedtuple('Datasets', ['train', 'validation', 'test'])
+Datasets = namedtuple('Datasets', ['train', 'test'])
 
 
 class Dataset:
@@ -26,7 +24,7 @@ class Dataset:
                  dtype=np.float32,
                  reshape=True,
                  seed=123):
-        np.random.seed(seed)  # set seed elsewhere?
+        np.random.seed(seed)
         if dtype not in (np.uint8, np.float32):
             # dtype should be either uint8 to leave input as [0, 255] or float32 to rescale into [0.0, 1.0]
             raise TypeError(
@@ -39,8 +37,7 @@ class Dataset:
 
         # flatten images
         if reshape:
-            # images = images.reshape(images.shape[0], images.shape[1] * images.shape[2])
-            images = images.reshape(images.shape[0], int(np.prod(images.shape[1:])))
+            images = images.reshape(images.shape[0], images.shape[1] * images.shape[2])
         if dtype == np.float32:
             # convert from [0, 255] --> [0.0, 1.0]
             images = images.astype(np.float32)
@@ -128,38 +125,23 @@ def load_data(dataset='mnist', dtype=np.float32, reshape=True, seed=123):
     elif dataset == 'frey_face':
         # for now, returning an (n_imgs, 1) array of zeros for training labels
         (train_images, train_labels), (test_images, test_labels) = _load_freyface()  # unlabeled dataset
-    # elif dataset == 'omniglot':
-    #     (train_images, train_labels), (test_images, test_labels) = _load_omniglot()
     elif dataset == 'fashion_mnist':
         (train_images, train_labels), (test_images, test_labels) = _load_fashion_mnist()
     elif dataset == 'cifar10':
         (train_images, train_labels), (test_images, test_labels) = _load_cifar10()
     elif dataset == 'cifar100':
         (train_images, train_labels), (test_images, test_labels) = _load_cifar_100()
-    # elif dataset == 'celebA':
-    #     (train_images, train_labels), (test_images, test_labels) = _load_celebA()
     else:
         raise ValueError(
             'Unavailable dataset specified. Datasets available: [{}]'.format(', '.join(DATASETS_AVAILABLE)))
-
-    # if not 0 <= validation_size <= train_images.shape[0]:
-    #     raise ValueError('Validation size should be between 0 and {}. Received {}.'
-    #                      .format(train_images.shape[0], validation_size))
-
-    # no point in validation set here?
-    # validation_images = train_images[:validation_size]
-    # validation_labels = train_labels[:validation_size]
-    # train_images = train_images[validation_size:]
-    # train_labels = train_labels[validation_size:]
 
     img_dims = list(train_images.shape[1:])
     options = dict(img_dims=img_dims, dtype=dtype, reshape=reshape, seed=seed)
 
     train = Dataset(train_images, train_labels, **options)
-    # validation = Dataset(validation_images, validation_labels, **options)
     test = Dataset(test_images, test_labels, **options)
 
-    return Datasets(train=train, validation=None, test=test)
+    return Datasets(train=train, test=test)
 
 
 def _load_mnist(path='mnist.npz'):
@@ -176,10 +158,6 @@ def _load_mnist(path='mnist.npz'):
     y_train = np.expand_dims(y_train, axis=-1)
     x_test = np.expand_dims(x_test, axis=-1)
     y_test = np.expand_dims(y_test, axis=-1)
-
-    # unsupervised task
-    # x_train = np.concatenate((x_train, x_test), axis=0)
-    # y_train = np.concatenate((y_train, y_test), axis=0)
 
     return (x_train, y_train), (x_test, y_test)
 
@@ -201,21 +179,8 @@ def _load_freyface(path='frey_rawface.mat'):
     x_test = np.reshape(x_test, tuple([x_test.shape[0]] + img_dims), order='C')
     x_test = np.expand_dims(x_test, axis=-1)
 
-    # TODO: figure out better way of handling this
     return (x_train, np.zeros(shape=(train_size, 1), dtype=np.uint8)), \
            (x_test, np.zeros(shape=(x_test.shape[0], 1), dtype=np.uint8))
-
-
-# def _load_omniglot():
-#     base = 'https://github.com/brendenlake/omniglot/raw/master/python/'
-#     files = ['images_background.zip', 'images_evaluation.zip']
-#
-#     paths = []
-#     for fname in files:
-#         paths.append(get_file(fname,
-#                               origin=base + fname,
-#                               extract=True,
-#                               archive_format='zip'))
 
 
 def _load_fashion_mnist():
@@ -250,10 +215,6 @@ def _load_fashion_mnist():
     x_test = np.expand_dims(x_test, axis=-1)
     y_test = np.expand_dims(y_test, axis=-1)
 
-    # unsupervised task
-    # x_train = np.concatenate((x_train, x_test), axis=0)
-    # y_train = np.concatenate((y_train, y_test), axis=0)
-
     return (x_train, y_train), (x_test, y_test)
 
 
@@ -282,10 +243,6 @@ def _load_cifar10():
     x_train = x_train.transpose(0, 2, 3, 1)
     x_test = x_test.transpose(0, 2, 3, 1)
 
-    # unsupervised task
-    # x_train = np.concatenate((x_train, x_test), axis=0)
-    # y_train = np.concatenate((y_train, y_test), axis=0)
-
     return (x_train, y_train), (x_test, y_test)
 
 
@@ -310,16 +267,7 @@ def _load_cifar_100(label_mode='fine'):
     x_train = x_train.transpose(0, 2, 3, 1)
     x_test = x_test.transpose(0, 2, 3, 1)
 
-    # unsupervised task
-    # x_train = np.concatenate((x_train, x_test), axis=0)
-    # y_train = np.concatenate((y_train, y_test), axis=0)
-
     return (x_train, y_train), (x_test, y_test)
-
-
-# def _load_celebA():
-#     dirname = 'celebA-python'
-#     origin = 'https://drive.google.com/drive/folders/0B7EVK8r0v71pTUZsaXdaSnZBZzg/Img/img_align_celeba.zip'
 
 
 def _load_batch(fpath, label_key='labels'):

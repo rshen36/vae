@@ -16,7 +16,6 @@ logger = logging.getLogger('train')
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    # TODO: input checks
     parser.add_argument('--model', type=str, default='bernoulli_vae',
                         choices=['bernoulli_vae', 'gaussian_vae', 'bernoulli_iwae'],
                         help='type of variational autoencoder model (default: bernoulli_vae)\n' +
@@ -37,7 +36,6 @@ def parse_args():
     parser.add_argument('--print_freq', type=int, default=1,
                         help='frequency (in global steps) to log current results (default: 1)')
 
-    # also allow specification of optimizer to use?
     parser.add_argument('--lr', type=float, default=.02, help='learning rate (default: .02)')
     parser.add_argument('--z_dim', type=int, default=20, help='dimensionality of latent variable (default: 20)')
 
@@ -54,8 +52,7 @@ if __name__ == "__main__":
     rand_fname = str(random.getrandbits(128))  # generate this filename before setting seed
     np.random.seed(args.seed)
 
-    # input checks
-    # better way of doing this? something more directly with argparse?
+    # (overly simple) input checks
     assert args.num_epochs > 0
     assert args.batch_size > 0
     assert args.checkpoint_freq > 0
@@ -65,8 +62,7 @@ if __name__ == "__main__":
     assert args.mc_samples > 0
     assert args.hidden_dim > 0
 
-    # does the random seed set above also set the random seed for this class instance?
-    dataset = load_data(dataset=args.dataset)
+    dataset = load_data(dataset=args.dataset, seed=args.seed)
     logger.info("Successfully loaded dataset {}".format(args.dataset))
 
     # output directories
@@ -102,20 +98,19 @@ if __name__ == "__main__":
         f.write("Epoch,Global step,Samples,Average loss,ELBO,Test ELBO\n")
 
     with tf.Session() as sess:
-        # ISSUE: how best to allow for variable specification of the model?
-        # does the random seed set above also set the random seed for this class instance?
         importance_weights = False
         if args.model == "bernoulli_iwae":
             model = BernoulliIWAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
-                                  batch_size=args.batch_size, n_samples=args.mc_samples, model_name=args.model)
+                                  batch_size=args.batch_size, n_samples=args.mc_samples, model_name=args.model,
+                                  seed=args.seed)
             importance_weights = True
             i = 0
         elif args.model == "bernoulli_vae":
             model = BernoulliVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, lr=args.lr,
-                                 hidden_dim=args.hidden_dim, model_name=args.model)
+                                 hidden_dim=args.hidden_dim, model_name=args.model, seed=args.seed)
         else:
             model = GaussianVAE(x_dims=dataset.train.img_dims, z_dim=args.z_dim, hidden_dim=args.hidden_dim,
-                                lr=args.lr, model_name=args.model)
+                                lr=args.lr, model_name=args.model, seed=args.seed)
 
         global_step = 0
         saver = tf.train.Saver()
@@ -135,11 +130,10 @@ if __name__ == "__main__":
         # Dataset class keeps track of steps in current epoch and number epochs elapsed
         lr = args.lr
         while dataset.train.epochs_completed < args.num_epochs:
-            cur_epoch_completed = False  # ew
+            cur_epoch_completed = False
             while not cur_epoch_completed:
                 batch_xs, batch_ys = dataset.train.next_batch(args.batch_size)
                 if importance_weights:
-                    # TODO: do this better
                     summary, loss, elbo, _ = sess.run(
                         [model.merged, model.loss, model.elbo, model.train_op],
                         feed_dict={
@@ -177,7 +171,6 @@ if __name__ == "__main__":
                 saver.save(sess, checkpoint_path, global_step=global_step)
 
             if dataset.train.epochs_completed % args.print_freq == 0:
-                # better way of logging to stdout and a log file?
                 logger.info("Epoch: {}   Global step: {}   # Samples: {}   Average Loss: {}   ELBO: {}   Test ELBO: {}"
                             .format(dataset.train.epochs_completed, global_step, global_step * args.batch_size,
                                     loss, elbo, test_elbo))
